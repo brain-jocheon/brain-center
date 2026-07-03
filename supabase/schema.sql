@@ -17,8 +17,13 @@ create table if not exists children (
   name text not null,
   grade text not null,
   birth_year int,
-  created_at date not null default current_date
+  created_at date not null default current_date,
+  status text not null default 'active' check (status in ('active', 'archived'))
 );
+-- 이미 만들어진 프로젝트에서 실행 시 컬럼만 추가 (새 설치에서는 위 CREATE TABLE에 이미 포함되어 no-op)
+alter table children add column if not exists status text not null default 'active';
+alter table children drop constraint if exists children_status_check;
+alter table children add constraint children_status_check check (status in ('active', 'archived'));
 
 create table if not exists reports (
   id text primary key,

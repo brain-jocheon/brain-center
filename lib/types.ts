@@ -15,6 +15,8 @@ export interface Child {
   grade: string;
   birthYear?: number;
   createdAt: string;
+  /** active(재원 중) | archived(그만둠) — 목록에서 분리 표시용, 삭제와는 별개 */
+  status: "active" | "archived";
 }
 
 /** 척도별 점수 (그래프 표시용, 1~10) */

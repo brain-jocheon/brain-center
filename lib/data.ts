@@ -43,7 +43,7 @@ function db(): SupabaseClient {
 
 /* ---------------- 아동 ---------------- */
 
-const CHILD_SELECT = "id, name, grade, birthYear:birth_year, createdAt:created_at";
+const CHILD_SELECT = "id, name, grade, birthYear:birth_year, createdAt:created_at, status";
 
 export async function getChildren(): Promise<Child[]> {
   const { data, error } = await db().from("children").select(CHILD_SELECT).order("created_at", { ascending: false });
@@ -64,10 +64,35 @@ export async function createChild(input: { name: string; grade: string; birthYea
     grade: input.grade,
     birth_year: input.birthYear ?? null,
     created_at: new Date().toISOString().slice(0, 10),
+    status: "active" as const,
   };
   const { error } = await db().from("children").insert(row);
   if (error) throw error;
-  return { id: row.id, name: row.name, grade: row.grade, birthYear: input.birthYear, createdAt: row.created_at };
+  return { id: row.id, name: row.name, grade: row.grade, birthYear: input.birthYear, createdAt: row.created_at, status: row.status };
+}
+
+/** 그만둔 아이로 표시 (삭제 아님 — 목록에서 분리되어 보일 뿐 데이터는 그대로 유지) */
+export async function setChildStatus(id: string, status: "active" | "archived"): Promise<boolean> {
+  const { data, error } = await db().from("children").update({ status }).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/**
+ * 아동을 완전히 삭제합니다 (되돌릴 수 없음).
+ * [주의] reports/mtpris_reports는 DB의 on delete cascade로 자동 삭제되지만,
+ * access_tokens는 report_id에 외래키가 없어 자동으로 지워지지 않으므로 먼저 정리합니다.
+ */
+export async function deleteChild(id: string): Promise<boolean> {
+  const [reports, mtprisReports] = await Promise.all([getReportsByChild(id), getMtprisReportsByChild(id)]);
+  const reportIds = [...reports.map((r) => r.id), ...mtprisReports.map((r) => r.id)];
+  if (reportIds.length > 0) {
+    const { error: tokenError } = await db().from("access_tokens").delete().in("report_id", reportIds);
+    if (tokenError) throw tokenError;
+  }
+  const { data, error } = await db().from("children").delete().eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 /* ---------------- 리포트 ---------------- */
