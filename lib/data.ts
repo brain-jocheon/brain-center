@@ -160,7 +160,11 @@ export async function getAccessByToken(token: string): Promise<AccessToken | nul
   if (!found.active) return null;
 
   // [보안] 만료일이 지난 링크 차단
-  if (found.expiresAt && new Date(found.expiresAt) < new Date()) return null;
+  // [주의] expiresAt은 날짜만 저장되므로("2026-07-03") 그냥 new Date()로 비교하면
+  // 그날 자정(00:00)을 기준으로 판단되어, 만료일 당일에도 새벽 이후엔 바로
+  // "만료됨" 처리되는 버그가 있었음. 만료일 "그날 끝까지"는 유효하도록
+  // 그날 23:59:59(UTC)를 기준으로 비교한다.
+  if (found.expiresAt && new Date(`${found.expiresAt}T23:59:59Z`) < new Date()) return null;
 
   return found;
 }
