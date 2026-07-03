@@ -1,0 +1,6 @@
+node_modules
+.next
+out
+# [보안] 환경변수 파일은 비밀번호가 들어있으므로 절대 커밋 금지
+.env*.local
+.env

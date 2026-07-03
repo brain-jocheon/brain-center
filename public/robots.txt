@@ -1,0 +1,4 @@
+# [보안] 학부모 결과 페이지와 관리자 페이지가 검색엔진에 수집되지 않도록 차단
+User-agent: *
+Disallow: /report/
+Disallow: /admin/
