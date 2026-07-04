@@ -15,13 +15,13 @@
  */
 
 import { useState } from "react";
-import type { MaskedReport } from "@/lib/types";
+import type { MaskedReport, ParentPhoto } from "@/lib/types";
 import type { ParentMtprisContent } from "@/lib/mtpris/mask";
 import TemperamentReportView from "./TemperamentReportView";
 import MtprisReportView from "./mtpris/MtprisReportView";
 
 type VerifyResponse =
-  | { kind: "temperament"; report: MaskedReport }
+  | { kind: "temperament"; report: MaskedReport; photos: ParentPhoto[] }
   | {
       kind: "mtpris";
       content: ParentMtprisContent;
@@ -29,6 +29,7 @@ type VerifyResponse =
       childGrade: string;
       testDate: string;
       counselor: string;
+      photos: ParentPhoto[];
     };
 
 export default function ParentReportViewer({ token }: { token: string }) {
@@ -105,9 +106,10 @@ export default function ParentReportViewer({ token }: { token: string }) {
         childGrade={result.childGrade}
         testDate={result.testDate}
         counselor={result.counselor}
+        photos={result.photos}
       />
     );
   }
 
-  return <TemperamentReportView report={result.report} />;
+  return <TemperamentReportView report={result.report} photos={result.photos} />;
 }

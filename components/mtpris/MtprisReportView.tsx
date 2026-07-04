@@ -9,7 +9,9 @@
  * - 인쇄용 전체 해석은 관리자 인쇄 화면에서 확인합니다.
  */
 import type { ParentMtprisContent } from "@/lib/mtpris/mask";
+import type { ParentPhoto } from "@/lib/types";
 import QuadrantChart from "./QuadrantChart";
+import ActivityAlbumSection from "../ActivityAlbumSection";
 
 export default function MtprisReportView({
   content,
@@ -17,12 +19,14 @@ export default function MtprisReportView({
   childGrade,
   testDate,
   counselor,
+  photos,
 }: {
   content: ParentMtprisContent;
   childMaskedName: string;
   childGrade: string;
   testDate: string;
   counselor: string;
+  photos: ParentPhoto[];
 }) {
   const { summary, scoreRows, comparison, trait, rest, talents, learning, career, closingQuote, memo } = content;
 
@@ -188,6 +192,8 @@ export default function MtprisReportView({
             <p className="text-[14px] leading-relaxed text-ink/80">{memo}</p>
           </section>
         )}
+
+        <ActivityAlbumSection photos={photos} />
 
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           <p className="mb-3">{closingQuote}</p>

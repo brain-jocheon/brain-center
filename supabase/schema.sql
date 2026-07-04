@@ -113,3 +113,40 @@ grant select, insert, update, delete on
   children, reports, mtpris_reports, access_tokens, access_logs
   to service_role;
 grant usage, select on all sequences in schema public to service_role;
+
+-- =====================================================================
+-- 2단계: 활동 사진/앨범
+-- ---------------------------------------------------------------------
+-- 비공개 Storage 버킷 + activity_photos(사진) + photo_students(사진↔아이 다대다).
+-- 모든 읽기는 서버가 그때그때 만드는 단기 서명 URL로만 이루어지므로
+-- storage_path 자체는 어디에도 그대로 노출되지 않습니다.
+-- =====================================================================
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('activity-photos', 'activity-photos', false, 8388608)
+on conflict (id) do nothing;
+
+create table if not exists activity_photos (
+  id text primary key,
+  storage_path text not null,
+  activity_date date not null,
+  activity_name text not null,
+  activity_type text not null check (activity_type in ('class', 'craft', 'cooking', 'neurofeedback', 'event', 'other')),
+  description text,
+  is_public_to_parent boolean not null default false,
+  memo text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists activity_photos_date_idx on activity_photos(activity_date desc);
+
+create table if not exists photo_students (
+  photo_id text not null references activity_photos(id) on delete cascade,
+  student_id text not null references children(id) on delete cascade,
+  primary key (photo_id, student_id)
+);
+create index if not exists photo_students_student_idx on photo_students(student_id);
+
+alter table activity_photos enable row level security;
+alter table photo_students enable row level security;
+grant select, insert, update, delete on activity_photos, photo_students to service_role;

@@ -7,10 +7,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
+  getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
 import ChildInfoPanel from "@/components/admin/ChildInfoPanel";
+import PhotoUploadForm from "@/components/admin/PhotoUploadForm";
+import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +25,28 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   const child = await getChild(params.id);
   if (!child) notFound();
 
-  const [reports, mtprisReports, tokens] = await Promise.all([
+  const [reports, mtprisReports, tokens, allChildren, photos, activityNames] = await Promise.all([
     getReportsByChild(child.id),
     getMtprisReportsByChild(child.id),
     getAccessTokens(),
+    getChildren(),
+    getPhotosByChild(child.id),
+    getActivityNames(),
   ]);
+
+  const otherActiveChildren = allChildren
+    .filter((c) => c.id !== child.id && c.status === "active")
+    .map((c) => ({ id: c.id, name: c.name, grade: c.grade }));
+  const childNames: Record<string, string> = Object.fromEntries(allChildren.map((c) => [c.id, c.name]));
+
+  const galleryPhotos: GalleryPhoto[] = (
+    await Promise.all(
+      photos.map(async (p) => {
+        const url = await createSignedPhotoUrl(p.storagePath);
+        return url ? { ...p, url } : null;
+      })
+    )
+  ).filter((p): p is GalleryPhoto => p !== null);
 
   const items: TimelineItem[] = [
     ...reports.map((r) => ({
@@ -115,6 +135,22 @@ export default async function ChildDetail({ params }: { params: { id: string } }
             </section>
           );
         })}
+
+        <section>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <p className="section-label">활동 사진 / 앨범</p>
+          </div>
+          <div className="space-y-4">
+            <PhotoUploadForm
+              childId={child.id}
+              otherChildren={otherActiveChildren}
+              activityNameSuggestions={activityNames}
+            />
+            <div className="card">
+              <PhotoGallery photos={galleryPhotos} childNames={childNames} />
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );

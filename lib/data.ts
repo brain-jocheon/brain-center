@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -289,5 +289,178 @@ export async function getMtprisReportsByChild(childId: string): Promise<MtprisRa
 
 export async function saveMtprisReport(updated: MtprisRawInput): Promise<void> {
   const { error } = await db().from("mtpris_reports").upsert(mtprisToRow(updated), { onConflict: "id" });
+  if (error) throw error;
+}
+
+/* ---------------- 활동 사진/앨범 ---------------- */
+
+export const PHOTO_BUCKET = "activity-photos";
+const ALLOWED_PHOTO_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+const PHOTO_SELECT =
+  "id, storagePath:storage_path, activityDate:activity_date, activityName:activity_name, activityType:activity_type, description, isPublicToParent:is_public_to_parent, memo, createdAt:created_at, updatedAt:updated_at";
+
+async function attachStudentIds(photos: Omit<ActivityPhoto, "studentIds">[]): Promise<ActivityPhoto[]> {
+  if (photos.length === 0) return [];
+  const ids = photos.map((p) => p.id);
+  const { data, error } = await db().from("photo_students").select("photoId:photo_id, studentId:student_id").in("photo_id", ids);
+  if (error) throw error;
+  const map = new Map<string, string[]>();
+  for (const row of (data ?? []) as { photoId: string; studentId: string }[]) {
+    const list = map.get(row.photoId) ?? [];
+    list.push(row.studentId);
+    map.set(row.photoId, list);
+  }
+  return photos.map((p) => ({ ...p, studentIds: map.get(p.id) ?? [] }));
+}
+
+/** 특정 아이와 연결된 사진 목록 (activity_date 최신순). onlyPublic이면 공개 사진만 */
+export async function getPhotosByChild(childId: string, opts?: { onlyPublic?: boolean }): Promise<ActivityPhoto[]> {
+  const { data: links, error: linkError } = await db().from("photo_students").select("photo_id").eq("student_id", childId);
+  if (linkError) throw linkError;
+  const photoIds = (links ?? []).map((l: { photo_id: string }) => l.photo_id);
+  if (photoIds.length === 0) return [];
+
+  let query = db().from("activity_photos").select(PHOTO_SELECT).in("id", photoIds).order("activity_date", { ascending: false });
+  if (opts?.onlyPublic) query = query.eq("is_public_to_parent", true);
+  const { data, error } = await query;
+  if (error) throw error;
+  return attachStudentIds((data ?? []) as unknown as Omit<ActivityPhoto, "studentIds">[]);
+}
+
+export async function getPhoto(id: string): Promise<ActivityPhoto | null> {
+  const { data, error } = await db().from("activity_photos").select(PHOTO_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const [full] = await attachStudentIds([data as unknown as Omit<ActivityPhoto, "studentIds">]);
+  return full;
+}
+
+/** 이미 업로드된 활동명 목록(최근순, 중복 제거) — 업로드 폼 자동완성용 */
+export async function getActivityNames(): Promise<string[]> {
+  const { data, error } = await db()
+    .from("activity_photos")
+    .select("activity_name")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  const names = (data ?? []).map((r: { activity_name: string }) => r.activity_name);
+  return Array.from(new Set(names));
+}
+
+function extFromFilename(filename: string): string {
+  const m = /\.([a-zA-Z0-9]+)$/.exec(filename);
+  return m ? m[1].toLowerCase() : "";
+}
+
+/** 업로드용 서명 URL 발급 — 파일 바이트는 이 서버를 거치지 않고 클라이언트가 Storage에 직접 올림 */
+export async function createPhotoUploadTarget(
+  childId: string,
+  filename: string,
+  contentType: string
+): Promise<{ path: string; token: string }> {
+  const ext = extFromFilename(filename);
+  const expectedMime = ALLOWED_PHOTO_EXT[ext];
+  if (!expectedMime || expectedMime !== contentType) {
+    throw new Error("허용되지 않는 파일 형식입니다. (jpg, jpeg, png, webp만 가능)");
+  }
+  const path = `${childId}/${randomBytes(8).toString("hex")}.${ext}`;
+  const { data, error } = await db().storage.from(PHOTO_BUCKET).createSignedUploadUrl(path);
+  if (error) throw error;
+  return { path, token: data.token };
+}
+
+export interface ActivityPhotoInput {
+  storagePath: string;
+  activityDate: string;
+  activityName: string;
+  activityType: ActivityPhoto["activityType"];
+  description?: string;
+  isPublicToParent: boolean;
+  memo?: string;
+  studentIds: string[];
+}
+
+export async function createActivityPhoto(input: ActivityPhotoInput): Promise<ActivityPhoto> {
+  const id = `photo_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    storage_path: input.storagePath,
+    activity_date: input.activityDate,
+    activity_name: input.activityName,
+    activity_type: input.activityType,
+    description: input.description || null,
+    is_public_to_parent: input.isPublicToParent,
+    memo: input.memo || null,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("activity_photos").insert(row);
+  if (error) throw error;
+
+  if (input.studentIds.length > 0) {
+    const links = input.studentIds.map((studentId) => ({ photo_id: id, student_id: studentId }));
+    const { error: linkError } = await db().from("photo_students").insert(links);
+    if (linkError) throw linkError;
+  }
+
+  const photo = await getPhoto(id);
+  if (!photo) throw new Error("사진 생성 직후 조회에 실패했습니다.");
+  return photo;
+}
+
+export async function updateActivityPhoto(
+  id: string,
+  patch: Partial<Omit<ActivityPhotoInput, "storagePath">>
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.activityDate !== undefined) row.activity_date = patch.activityDate;
+  if (patch.activityName !== undefined) row.activity_name = patch.activityName;
+  if (patch.activityType !== undefined) row.activity_type = patch.activityType;
+  if (patch.description !== undefined) row.description = patch.description || null;
+  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  if (patch.memo !== undefined) row.memo = patch.memo || null;
+
+  const { data, error } = await db().from("activity_photos").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  if ((data?.length ?? 0) === 0) return false;
+
+  if (patch.studentIds !== undefined) {
+    const { error: delError } = await db().from("photo_students").delete().eq("photo_id", id);
+    if (delError) throw delError;
+    if (patch.studentIds.length > 0) {
+      const links = patch.studentIds.map((studentId) => ({ photo_id: id, student_id: studentId }));
+      const { error: insError } = await db().from("photo_students").insert(links);
+      if (insError) throw insError;
+    }
+  }
+  return true;
+}
+
+/** 사진 삭제 (DB 행 삭제 후 storage_path를 반환 — 호출부가 실제 파일도 지워야 함) */
+export async function deleteActivityPhoto(id: string): Promise<string | null> {
+  const { data, error } = await db().from("activity_photos").select("storage_path").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { error: delError } = await db().from("activity_photos").delete().eq("id", id);
+  if (delError) throw delError;
+  return (data as { storage_path: string }).storage_path;
+}
+
+/** 조회용 단기 서명 URL (기본 10분) — storage_path는 절대 그대로 클라이언트에 내려주지 않음 */
+export async function createSignedPhotoUrl(path: string, expiresIn = 600): Promise<string | null> {
+  const { data, error } = await db().storage.from(PHOTO_BUCKET).createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+export async function deletePhotoFile(path: string): Promise<void> {
+  const { error } = await db().storage.from(PHOTO_BUCKET).remove([path]);
   if (error) throw error;
 }

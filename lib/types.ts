@@ -103,3 +103,30 @@ export interface MaskedReport extends Omit<Report, "childId"> {
   childMaskedName: string; // 예: "김OO"
   childGrade: string;
 }
+
+/** 활동 사진 (관리자 전체 뷰) */
+export interface ActivityPhoto {
+  id: string;
+  storagePath: string;
+  activityDate: string;
+  activityName: string;
+  activityType: "class" | "craft" | "cooking" | "neurofeedback" | "event" | "other";
+  description?: string;
+  /** [보안] 이 값이 true이고 아이가 태그되어 있어야만 그 아이 학부모 화면에 노출됨 */
+  isPublicToParent: boolean;
+  /** [보안] 관리자 전용 — 학부모 화면에는 절대 내려가지 않음 */
+  memo?: string;
+  createdAt: string;
+  updatedAt: string;
+  studentIds: string[];
+}
+
+/** 학부모 화면에 내려가는 사진 — memo·storagePath 없음, 서명된 url만 포함 */
+export interface ParentPhoto {
+  id: string;
+  url: string;
+  activityDate: string;
+  activityName: string;
+  activityType: ActivityPhoto["activityType"];
+  description?: string;
+}

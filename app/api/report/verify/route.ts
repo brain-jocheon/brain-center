@@ -17,13 +17,14 @@
  * =====================================================================
  */
 import { NextResponse } from "next/server";
-import { getAccessByToken, getReport, getChild, getMtprisReport, logAccess } from "@/lib/data";
+import { getAccessByToken, getReport, getChild, getMtprisReport, logAccess, getPhotosByChild, createSignedPhotoUrl } from "@/lib/data";
 import { verifyParentPassword, maskName } from "@/lib/auth";
-import type { MaskedReport } from "@/lib/types";
+import type { MaskedReport, ParentPhoto } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent } from "@/lib/mtpris/mask";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" };
+const PHOTO_SIGNED_URL_TTL = 600; // 10분 — 짧게 유지해 서명 URL 노출 기간을 제한
 
 async function logAttempt(token: string, reportId: string | null, success: boolean, req: Request) {
   // [보안] 열람 기록은 참고용이므로, 기록 실패가 실제 로그인 흐름을 막으면 안 됨
@@ -33,6 +34,27 @@ async function logAttempt(token: string, reportId: string | null, success: boole
   } catch {
     // 기록 실패는 무시
   }
+}
+
+/** 공개 사진만, 최신순, 서명 URL로 변환 — memo(관리자 전용)는 절대 포함하지 않음 */
+async function getParentPhotos(childId: string): Promise<ParentPhoto[]> {
+  const photos = await getPhotosByChild(childId, { onlyPublic: true });
+  const withUrls = await Promise.all(
+    photos.map(async (p) => {
+      const url = await createSignedPhotoUrl(p.storagePath, PHOTO_SIGNED_URL_TTL);
+      if (!url) return null;
+      const photo: ParentPhoto = {
+        id: p.id,
+        url,
+        activityDate: p.activityDate,
+        activityName: p.activityName,
+        activityType: p.activityType,
+        description: p.description,
+      };
+      return photo;
+    })
+  );
+  return withUrls.filter((p): p is ParentPhoto => p !== null);
 }
 
 export async function POST(req: Request) {
@@ -77,6 +99,7 @@ export async function POST(req: Request) {
     const fullContent = generateMtprisContent(raw);
     // [보안] 상담사 전용 정보(원자료, 다짐, 상담 질문) 제거 후 전달
     const parentContent = maskMtprisContentForParent(fullContent);
+    const photos = await getParentPhotos(raw.childId);
 
     return NextResponse.json(
       {
@@ -86,6 +109,7 @@ export async function POST(req: Request) {
         childGrade: child?.grade ?? "",
         testDate: raw.testDate,
         counselor: raw.counselor,
+        photos,
       },
       { headers: NO_STORE }
     );
@@ -100,6 +124,7 @@ export async function POST(req: Request) {
   }
 
   const child = await getChild(report.childId);
+  const photos = await getParentPhotos(report.childId);
 
   // [보안] 실명 제거 + 마스킹된 이름만 포함하여 응답
   const { childId, ...rest } = report;
@@ -109,5 +134,5 @@ export async function POST(req: Request) {
     childGrade: child?.grade ?? "",
   };
 
-  return NextResponse.json({ kind: "temperament", report: masked }, { headers: NO_STORE });
+  return NextResponse.json({ kind: "temperament", report: masked, photos }, { headers: NO_STORE });
 }

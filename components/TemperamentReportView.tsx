@@ -3,10 +3,11 @@
 /**
  * 서술형 기질검사 결과 표시 (기존 ParentReportViewer의 화면 부분을 그대로 분리)
  */
-import type { MaskedReport } from "@/lib/types";
+import type { MaskedReport, ParentPhoto } from "@/lib/types";
 import ScoreBars from "./ScoreBars";
+import ActivityAlbumSection from "./ActivityAlbumSection";
 
-export default function TemperamentReportView({ report }: { report: MaskedReport }) {
+export default function TemperamentReportView({ report, photos }: { report: MaskedReport; photos: ParentPhoto[] }) {
   return (
     <main className="min-h-screen pb-14">
       <header className="bg-sage-700 text-white px-6 pt-10 pb-14 rounded-b-[2rem]">
@@ -90,6 +91,8 @@ export default function TemperamentReportView({ report }: { report: MaskedReport
           <GuideBlock title="추천 활동" items={report.centerPlan.activities} />
           <GuideBlock title="다음 상담에서 함께 볼 부분" items={report.centerPlan.nextCheckpoints} last />
         </section>
+
+        <ActivityAlbumSection photos={photos} />
 
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           본 결과지는 보호자 상담 및 가정 지도 참고용이며,
