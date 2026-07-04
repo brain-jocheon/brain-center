@@ -18,12 +18,31 @@ create table if not exists children (
   grade text not null,
   birth_year int,
   created_at date not null default current_date,
-  status text not null default 'active' check (status in ('active', 'archived'))
+  status text not null default 'active' check (status in ('active', 'waiting', 'ended')),
+  birth_date date,
+  gender text,
+  guardian_name text,
+  -- [보안] 보호자 연락처는 학부모 화면·URL에 절대 노출하지 않습니다. 관리자 화면 전용.
+  guardian_phone text,
+  service_type text,
+  class_day text,
+  counselor text,
+  memo text
 );
 -- 이미 만들어진 프로젝트에서 실행 시 컬럼만 추가 (새 설치에서는 위 CREATE TABLE에 이미 포함되어 no-op)
 alter table children add column if not exists status text not null default 'active';
+alter table children add column if not exists birth_date date;
+alter table children add column if not exists gender text;
+alter table children add column if not exists guardian_name text;
+alter table children add column if not exists guardian_phone text;
+alter table children add column if not exists service_type text;
+alter table children add column if not exists class_day text;
+alter table children add column if not exists counselor text;
+alter table children add column if not exists memo text;
+-- status를 2단계(active/archived)에서 3단계(active/waiting/ended)로 확장.
+-- 기존 데이터는 전부 'active'뿐이라 안전하게 확장 가능 (active=이용중, waiting=대기, ended=종료)
 alter table children drop constraint if exists children_status_check;
-alter table children add constraint children_status_check check (status in ('active', 'archived'));
+alter table children add constraint children_status_check check (status in ('active', 'waiting', 'ended'));
 
 create table if not exists reports (
   id text primary key,

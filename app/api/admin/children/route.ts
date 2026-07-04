@@ -12,7 +12,19 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { name?: string; grade?: string; birthYear?: number }
+    | {
+        name?: string;
+        grade?: string;
+        birthYear?: number;
+        birthDate?: string;
+        gender?: "M" | "F";
+        guardianName?: string;
+        guardianPhone?: string;
+        serviceType?: string;
+        classDay?: string;
+        counselor?: string;
+        memo?: string;
+      }
     | null;
 
   const name = body?.name?.trim();
@@ -31,6 +43,22 @@ export async function POST(req: Request) {
     birthYear = y;
   }
 
-  const child = await createChild({ name, grade, birthYear });
+  if (body?.gender !== undefined && body.gender !== null && body.gender !== "M" && body.gender !== "F") {
+    return NextResponse.json({ message: "성별 값이 올바르지 않습니다." }, { status: 400 });
+  }
+
+  const child = await createChild({
+    name,
+    grade,
+    birthYear,
+    birthDate: body?.birthDate?.trim() || undefined,
+    gender: body?.gender,
+    guardianName: body?.guardianName?.trim() || undefined,
+    guardianPhone: body?.guardianPhone?.trim() || undefined,
+    serviceType: body?.serviceType?.trim() || undefined,
+    classDay: body?.classDay?.trim() || undefined,
+    counselor: body?.counselor?.trim() || undefined,
+    memo: body?.memo?.trim() || undefined,
+  });
   return NextResponse.json({ ok: true, child });
 }

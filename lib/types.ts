@@ -13,10 +13,20 @@ export interface Child {
   /** [보안] 실명 — 관리자 화면에서만 사용. 학부모 화면에는 절대 그대로 내려보내지 않음 */
   name: string;
   grade: string;
+  /** @deprecated 새 폼은 birthDate만 사용. 기존 데이터 호환을 위해 유지 */
   birthYear?: number;
   createdAt: string;
-  /** active(재원 중) | archived(그만둠) — 목록에서 분리 표시용, 삭제와는 별개 */
-  status: "active" | "archived";
+  /** active(이용중) | waiting(대기) | ended(종료) — 목록 분리·필터용, 삭제와는 별개 */
+  status: "active" | "waiting" | "ended";
+  birthDate?: string;
+  gender?: "M" | "F";
+  guardianName?: string;
+  /** [보안] 학부모 화면·URL에 절대 노출 금지. 관리자 화면 전용 */
+  guardianPhone?: string;
+  serviceType?: string;
+  classDay?: string;
+  counselor?: string;
+  memo?: string;
 }
 
 /** 척도별 점수 (그래프 표시용, 1~10) */

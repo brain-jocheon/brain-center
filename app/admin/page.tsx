@@ -2,11 +2,11 @@
  * 관리자 홈: 아동 목록
  * (미들웨어가 로그인 여부를 검사하므로 이 페이지에 도달하면 이미 인증됨)
  */
-import Link from "next/link";
 import { getChildren, getReportsByChild, getMtprisReportsByChild } from "@/lib/data";
 import LogoutButton from "@/components/LogoutButton";
 import AddChildForm from "@/components/admin/AddChildForm";
 import AddChildWithMtprisForm from "@/components/admin/AddChildWithMtprisForm";
+import ChildListSection from "@/components/admin/ChildListSection";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +22,6 @@ export default async function AdminHome() {
       return { child: c, count: reports.length + mtprisReports.length, latest: dates[dates.length - 1] };
     })
   );
-  const active = withReports.filter((r) => r.child.status === "active");
-  const archived = withReports.filter((r) => r.child.status === "archived");
 
   return (
     <main className="min-h-screen">
@@ -39,54 +37,13 @@ export default async function AdminHome() {
         <p className="text-sm text-ink/50 mb-5">
           아동을 선택하면 검사 이력, 학부모 링크, 결과지 인쇄로 이동할 수 있습니다.
         </p>
-        <ul className="space-y-4">
-          {active.map(({ child, count, latest }) => (
-            <li key={child.id}>
-              <Link href={`/admin/children/${child.id}`} className="card block hover:border-sage-400 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-lg">{child.name}</p>
-                    <p className="text-sm text-ink/60 mt-0.5">
-                      {child.grade} · 검사 {count}건
-                      {latest && ` · 최근 ${latest}`}
-                    </p>
-                  </div>
-                  <span className="text-sage-400 text-xl">›</span>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-8 flex flex-wrap items-start gap-3">
+
+        <div className="mb-8 flex flex-wrap items-start gap-3">
           <AddChildWithMtprisForm />
           <AddChildForm />
         </div>
 
-        {archived.length > 0 && (
-          <details className="mt-8">
-            <summary className="text-sm text-ink/50 cursor-pointer select-none">
-              그만둔 아이 ({archived.length}명)
-            </summary>
-            <ul className="space-y-4 mt-4">
-              {archived.map(({ child, count, latest }) => (
-                <li key={child.id}>
-                  <Link href={`/admin/children/${child.id}`} className="card block hover:border-sage-400 transition-colors opacity-60">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-bold text-lg">{child.name}</p>
-                        <p className="text-sm text-ink/60 mt-0.5">
-                          {child.grade} · 검사 {count}건
-                          {latest && ` · 최근 ${latest}`}
-                        </p>
-                      </div>
-                      <span className="text-sage-400 text-xl">›</span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
+        <ChildListSection items={withReports} />
       </div>
     </main>
   );

@@ -43,7 +43,8 @@ function db(): SupabaseClient {
 
 /* ---------------- 아동 ---------------- */
 
-const CHILD_SELECT = "id, name, grade, birthYear:birth_year, createdAt:created_at, status";
+const CHILD_SELECT =
+  "id, name, grade, birthYear:birth_year, createdAt:created_at, status, birthDate:birth_date, gender, guardianName:guardian_name, guardianPhone:guardian_phone, serviceType:service_type, classDay:class_day, counselor, memo";
 
 export async function getChildren(): Promise<Child[]> {
   const { data, error } = await db().from("children").select(CHILD_SELECT).order("created_at", { ascending: false });
@@ -57,7 +58,21 @@ export async function getChild(id: string): Promise<Child | null> {
   return (data as unknown as Child) ?? null;
 }
 
-export async function createChild(input: { name: string; grade: string; birthYear?: number }): Promise<Child> {
+export interface ChildInput {
+  name: string;
+  grade: string;
+  birthYear?: number;
+  birthDate?: string;
+  gender?: "M" | "F";
+  guardianName?: string;
+  guardianPhone?: string;
+  serviceType?: string;
+  classDay?: string;
+  counselor?: string;
+  memo?: string;
+}
+
+export async function createChild(input: ChildInput): Promise<Child> {
   const row = {
     id: `child_${randomBytes(4).toString("hex")}`,
     name: input.name,
@@ -65,17 +80,46 @@ export async function createChild(input: { name: string; grade: string; birthYea
     birth_year: input.birthYear ?? null,
     created_at: new Date().toISOString().slice(0, 10),
     status: "active" as const,
+    birth_date: input.birthDate || null,
+    gender: input.gender || null,
+    guardian_name: input.guardianName || null,
+    guardian_phone: input.guardianPhone || null,
+    service_type: input.serviceType || null,
+    class_day: input.classDay || null,
+    counselor: input.counselor || null,
+    memo: input.memo || null,
   };
   const { error } = await db().from("children").insert(row);
   if (error) throw error;
-  return { id: row.id, name: row.name, grade: row.grade, birthYear: input.birthYear, createdAt: row.created_at, status: row.status };
+  const child = await getChild(row.id);
+  if (!child) throw new Error("아동 생성 직후 조회에 실패했습니다.");
+  return child;
 }
 
-/** 그만둔 아이로 표시 (삭제 아님 — 목록에서 분리되어 보일 뿐 데이터는 그대로 유지) */
-export async function setChildStatus(id: string, status: "active" | "archived"): Promise<boolean> {
-  const { data, error } = await db().from("children").update({ status }).eq("id", id).select("id");
+/** 아동 기본 정보 수정 (이름·학년·보호자정보·상태 등 일부만 보내도 됨) */
+export async function updateChild(id: string, patch: Partial<ChildInput> & { status?: Child["status"] }): Promise<boolean> {
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.grade !== undefined) row.grade = patch.grade;
+  if (patch.birthYear !== undefined) row.birth_year = patch.birthYear;
+  if (patch.birthDate !== undefined) row.birth_date = patch.birthDate || null;
+  if (patch.gender !== undefined) row.gender = patch.gender || null;
+  if (patch.guardianName !== undefined) row.guardian_name = patch.guardianName || null;
+  if (patch.guardianPhone !== undefined) row.guardian_phone = patch.guardianPhone || null;
+  if (patch.serviceType !== undefined) row.service_type = patch.serviceType || null;
+  if (patch.classDay !== undefined) row.class_day = patch.classDay || null;
+  if (patch.counselor !== undefined) row.counselor = patch.counselor || null;
+  if (patch.memo !== undefined) row.memo = patch.memo || null;
+  if (patch.status !== undefined) row.status = patch.status;
+
+  const { data, error } = await db().from("children").update(row).eq("id", id).select("id");
   if (error) throw error;
   return (data?.length ?? 0) > 0;
+}
+
+/** @deprecated updateChild(id, {status})로 대체됨. 기존 호출부 호환을 위해 유지 */
+export async function setChildStatus(id: string, status: Child["status"]): Promise<boolean> {
+  return updateChild(id, { status });
 }
 
 /**

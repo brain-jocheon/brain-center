@@ -10,7 +10,7 @@ import {
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
-import ChildManagePanel from "@/components/admin/ChildManagePanel";
+import ChildInfoPanel from "@/components/admin/ChildInfoPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -57,15 +57,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     <main className="min-h-screen">
       <header className="bg-white border-b border-sage-100 px-6 py-4">
         <Link href="/admin" className="text-sm text-sage-600">‹ 아동 목록</Link>
-        <div className="flex items-center justify-between flex-wrap gap-3 mt-1">
-          <h1 className="text-lg font-bold">
-            {child.name} <span className="font-normal text-ink/50 text-base">{child.grade}</span>
-          </h1>
-          <ChildManagePanel childId={child.id} childName={child.name} status={child.status} />
-        </div>
+        <h1 className="text-lg font-bold mt-1">
+          {child.name} <span className="font-normal text-ink/50 text-base">{child.grade}</span>
+        </h1>
       </header>
 
       <div className="max-w-3xl mx-auto px-5 py-8 space-y-5">
+        <ChildInfoPanel child={child} />
+
         {items.length === 0 && (
           <div className="card text-center text-sm text-ink/50 py-10">
             아직 등록된 검사가 없습니다.
