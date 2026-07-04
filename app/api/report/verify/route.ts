@@ -17,9 +17,12 @@
  * =====================================================================
  */
 import { NextResponse } from "next/server";
-import { getAccessByToken, getReport, getChild, getMtprisReport, logAccess, getPhotosByChild, createSignedPhotoUrl } from "@/lib/data";
+import {
+  getAccessByToken, getReport, getChild, getMtprisReport, logAccess,
+  getPhotosByChild, getBlogPhotos, createSignedPhotoUrl,
+} from "@/lib/data";
 import { verifyParentPassword, maskName } from "@/lib/auth";
-import type { MaskedReport, ParentPhoto } from "@/lib/types";
+import type { ActivityPhoto, MaskedReport, ParentPhoto } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent } from "@/lib/mtpris/mask";
 
@@ -36,9 +39,8 @@ async function logAttempt(token: string, reportId: string | null, success: boole
   }
 }
 
-/** 공개 사진만, 최신순, 서명 URL로 변환 — memo(관리자 전용)는 절대 포함하지 않음 */
-async function getParentPhotos(childId: string): Promise<ParentPhoto[]> {
-  const photos = await getPhotosByChild(childId, { onlyPublic: true });
+/** memo(관리자 전용) 제거 + storage_path를 단기 서명 URL로 변환 */
+async function toParentPhotos(photos: ActivityPhoto[]): Promise<ParentPhoto[]> {
   const withUrls = await Promise.all(
     photos.map(async (p) => {
       const url = await createSignedPhotoUrl(p.storagePath, PHOTO_SIGNED_URL_TTL);
@@ -55,6 +57,22 @@ async function getParentPhotos(childId: string): Promise<ParentPhoto[]> {
     })
   );
   return withUrls.filter((p): p is ParentPhoto => p !== null);
+}
+
+/** 우리 아이에게 태그된 공개 사진만 */
+async function getParentPhotos(childId: string): Promise<ParentPhoto[]> {
+  const photos = await getPhotosByChild(childId, { onlyPublic: true });
+  return toParentPhotos(photos);
+}
+
+/**
+ * [보안] 특정 아이 태그와 무관하게, 로그인(토큰+비밀번호 인증)에 성공한 모든 학부모에게
+ * 노출되는 "센터 소식" 피드. 자기 아이 자료만 보게 하는 원칙의 의도적인 예외이며,
+ * is_public_to_blog로 명시적으로 게시 설정된 사진만 대상입니다.
+ */
+async function getCenterNewsPhotos(): Promise<ParentPhoto[]> {
+  const photos = await getBlogPhotos({ onlyPublic: true });
+  return toParentPhotos(photos);
 }
 
 export async function POST(req: Request) {
@@ -99,7 +117,7 @@ export async function POST(req: Request) {
     const fullContent = generateMtprisContent(raw);
     // [보안] 상담사 전용 정보(원자료, 다짐, 상담 질문) 제거 후 전달
     const parentContent = maskMtprisContentForParent(fullContent);
-    const photos = await getParentPhotos(raw.childId);
+    const [photos, blogPhotos] = await Promise.all([getParentPhotos(raw.childId), getCenterNewsPhotos()]);
 
     return NextResponse.json(
       {
@@ -110,6 +128,7 @@ export async function POST(req: Request) {
         testDate: raw.testDate,
         counselor: raw.counselor,
         photos,
+        blogPhotos,
       },
       { headers: NO_STORE }
     );
@@ -124,7 +143,7 @@ export async function POST(req: Request) {
   }
 
   const child = await getChild(report.childId);
-  const photos = await getParentPhotos(report.childId);
+  const [photos, blogPhotos] = await Promise.all([getParentPhotos(report.childId), getCenterNewsPhotos()]);
 
   // [보안] 실명 제거 + 마스킹된 이름만 포함하여 응답
   const { childId, ...rest } = report;
@@ -134,5 +153,5 @@ export async function POST(req: Request) {
     childGrade: child?.grade ?? "",
   };
 
-  return NextResponse.json({ kind: "temperament", report: masked, photos }, { headers: NO_STORE });
+  return NextResponse.json({ kind: "temperament", report: masked, photos, blogPhotos }, { headers: NO_STORE });
 }

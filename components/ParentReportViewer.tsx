@@ -21,7 +21,7 @@ import TemperamentReportView from "./TemperamentReportView";
 import MtprisReportView from "./mtpris/MtprisReportView";
 
 type VerifyResponse =
-  | { kind: "temperament"; report: MaskedReport; photos: ParentPhoto[] }
+  | { kind: "temperament"; report: MaskedReport; photos: ParentPhoto[]; blogPhotos: ParentPhoto[] }
   | {
       kind: "mtpris";
       content: ParentMtprisContent;
@@ -30,6 +30,7 @@ type VerifyResponse =
       testDate: string;
       counselor: string;
       photos: ParentPhoto[];
+      blogPhotos: ParentPhoto[];
     };
 
 export default function ParentReportViewer({ token }: { token: string }) {
@@ -107,9 +108,10 @@ export default function ParentReportViewer({ token }: { token: string }) {
         testDate={result.testDate}
         counselor={result.counselor}
         photos={result.photos}
+        blogPhotos={result.blogPhotos}
       />
     );
   }
 
-  return <TemperamentReportView report={result.report} photos={result.photos} />;
+  return <TemperamentReportView report={result.report} photos={result.photos} blogPhotos={result.blogPhotos} />;
 }

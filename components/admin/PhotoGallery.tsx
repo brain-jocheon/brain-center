@@ -71,6 +71,7 @@ function PhotoCard({ photo, childNames }: { photo: GalleryPhoto; childNames: Rec
   const [form, setForm] = useState({
     description: photo.description ?? "",
     isPublicToParent: photo.isPublicToParent,
+    isPublicToBlog: photo.isPublicToBlog,
     memo: photo.memo ?? "",
   });
   const router = useRouter();
@@ -110,10 +111,15 @@ function PhotoCard({ photo, childNames }: { photo: GalleryPhoto; childNames: Rec
     <div className="rounded-xl border border-sage-100 overflow-hidden bg-white">
       <img src={photo.url} alt={photo.activityName} className="w-full aspect-square object-cover" />
       <div className="p-2">
-        <div className="flex items-center justify-between gap-1">
-          <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${photo.isPublicToParent ? "bg-sage-100 text-sage-700" : "bg-apricot-50 text-apricot-600"}`}>
-            {photo.isPublicToParent ? "공개" : "비공개"}
-          </span>
+        <div className="flex items-center justify-between gap-1 flex-wrap">
+          <div className="flex gap-1">
+            <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${photo.isPublicToParent ? "bg-sage-100 text-sage-700" : "bg-apricot-50 text-apricot-600"}`}>
+              {photo.isPublicToParent ? "학부모 공개" : "학부모 비공개"}
+            </span>
+            {photo.isPublicToBlog && (
+              <span className="text-[10px] rounded-full px-2 py-0.5 font-medium bg-sky-100 text-sky-700">센터 소식</span>
+            )}
+          </div>
           <div className="flex gap-1">
             <button className="text-xs text-sage-600 underline" onClick={() => setEditing((v) => !v)}>수정</button>
             <button className="text-xs text-apricot-600 underline" disabled={saving} onClick={handleDelete}>삭제</button>
@@ -143,6 +149,14 @@ function PhotoCard({ photo, childNames }: { photo: GalleryPhoto; childNames: Rec
                 onChange={(e) => setForm((f) => ({ ...f, isPublicToParent: e.target.checked }))}
               />
               학부모에게 공개
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={form.isPublicToBlog}
+                onChange={(e) => setForm((f) => ({ ...f, isPublicToBlog: e.target.checked }))}
+              />
+              센터 소식에 게시
             </label>
             {message && <p className="text-[11px] text-apricot-600">{message}</p>}
             <button className="btn-primary text-xs !px-3 !py-1.5" disabled={saving} onClick={handleSave}>

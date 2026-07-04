@@ -2,6 +2,7 @@
  * 관리자 홈: 아동 목록
  * (미들웨어가 로그인 여부를 검사하므로 이 페이지에 도달하면 이미 인증됨)
  */
+import Link from "next/link";
 import { getChildren, getReportsByChild, getMtprisReportsByChild } from "@/lib/data";
 import LogoutButton from "@/components/LogoutButton";
 import AddChildForm from "@/components/admin/AddChildForm";
@@ -30,7 +31,10 @@ export default async function AdminHome() {
           <p className="section-label">학습심리브레인센터 관리자</p>
           <h1 className="text-lg font-bold">아동 목록</h1>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          <Link href="/admin/blog" className="btn-ghost text-sm">센터 소식 관리</Link>
+          <LogoutButton />
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-5 py-8">

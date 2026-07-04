@@ -12,6 +12,7 @@ import type { ParentMtprisContent } from "@/lib/mtpris/mask";
 import type { ParentPhoto } from "@/lib/types";
 import QuadrantChart from "./QuadrantChart";
 import ActivityAlbumSection from "../ActivityAlbumSection";
+import CenterNewsSection from "../CenterNewsSection";
 
 export default function MtprisReportView({
   content,
@@ -20,6 +21,7 @@ export default function MtprisReportView({
   testDate,
   counselor,
   photos,
+  blogPhotos,
 }: {
   content: ParentMtprisContent;
   childMaskedName: string;
@@ -27,6 +29,7 @@ export default function MtprisReportView({
   testDate: string;
   counselor: string;
   photos: ParentPhoto[];
+  blogPhotos: ParentPhoto[];
 }) {
   const { summary, scoreRows, comparison, trait, rest, talents, learning, career, closingQuote, memo } = content;
 
@@ -194,6 +197,7 @@ export default function MtprisReportView({
         )}
 
         <ActivityAlbumSection photos={photos} />
+        <CenterNewsSection photos={blogPhotos} />
 
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           <p className="mb-3">{closingQuote}</p>

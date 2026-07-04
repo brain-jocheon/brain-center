@@ -114,6 +114,8 @@ export interface ActivityPhoto {
   description?: string;
   /** [보안] 이 값이 true이고 아이가 태그되어 있어야만 그 아이 학부모 화면에 노출됨 */
   isPublicToParent: boolean;
+  /** [보안] 특정 아이 태그와 무관하게 로그인한 모든 학부모의 "센터 소식" 피드에 노출됨 */
+  isPublicToBlog: boolean;
   /** [보안] 관리자 전용 — 학부모 화면에는 절대 내려가지 않음 */
   memo?: string;
   createdAt: string;

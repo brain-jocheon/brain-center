@@ -23,6 +23,7 @@ export async function POST(req: Request) {
         activityType?: string;
         description?: string;
         isPublicToParent?: boolean;
+        isPublicToBlog?: boolean;
         memo?: string;
         studentIds?: string[];
       }
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
   const activityDate = body?.activityDate?.trim();
   const activityName = body?.activityName?.trim();
   const studentIds = Array.isArray(body?.studentIds) ? body!.studentIds!.filter((id) => typeof id === "string" && id) : [];
+  const isPublicToBlog = !!body?.isPublicToBlog;
 
   if (!storagePath || !activityDate || !activityName) {
     return NextResponse.json({ message: "활동일과 활동명을 입력해 주세요." }, { status: 400 });
@@ -39,8 +41,9 @@ export async function POST(req: Request) {
   if (!body?.activityType || !ACTIVITY_TYPES.includes(body.activityType as ActivityPhoto["activityType"])) {
     return NextResponse.json({ message: "활동 유형이 올바르지 않습니다." }, { status: 400 });
   }
-  if (studentIds.length === 0) {
-    return NextResponse.json({ message: "사진에 태그할 아이를 한 명 이상 선택해 주세요." }, { status: 400 });
+  // 특정 아이 태그 없이도 "센터 소식"에만 게시하는 사진은 허용 — 둘 다 없으면 아무 데도 안 보이므로 거부
+  if (studentIds.length === 0 && !isPublicToBlog) {
+    return NextResponse.json({ message: "사진에 태그할 아이를 선택하거나 센터 소식에 게시해 주세요." }, { status: 400 });
   }
 
   const photo = await createActivityPhoto({
@@ -50,6 +53,7 @@ export async function POST(req: Request) {
     activityType: body.activityType as ActivityPhoto["activityType"],
     description: body.description?.trim() || undefined,
     isPublicToParent: !!body.isPublicToParent,
+    isPublicToBlog,
     memo: body.memo?.trim() || undefined,
     studentIds,
   });

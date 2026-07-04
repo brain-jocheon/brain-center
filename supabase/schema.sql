@@ -134,11 +134,16 @@ create table if not exists activity_photos (
   activity_type text not null check (activity_type in ('class', 'craft', 'cooking', 'neurofeedback', 'event', 'other')),
   description text,
   is_public_to_parent boolean not null default false,
+  -- 특정 아이 태그와 무관하게, 로그인(토큰+비밀번호 인증)한 모든 학부모에게 보이는
+  -- "센터 소식" 피드용 플래그. is_public_to_parent(특정 아이 태그 기반 공개)와는 별개.
+  is_public_to_blog boolean not null default false,
   memo text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 create index if not exists activity_photos_date_idx on activity_photos(activity_date desc);
+-- 이미 만들어진 프로젝트에서 실행 시 컬럼만 추가 (새 설치에서는 위 CREATE TABLE에 이미 포함되어 no-op)
+alter table activity_photos add column if not exists is_public_to_blog boolean not null default false;
 
 create table if not exists photo_students (
   photo_id text not null references activity_photos(id) on delete cascade,

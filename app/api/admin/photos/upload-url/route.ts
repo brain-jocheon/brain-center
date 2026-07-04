@@ -17,17 +17,22 @@ export async function POST(req: Request) {
     | { childId?: string; filename?: string; contentType?: string }
     | null;
 
-  if (!body?.childId || !body?.filename || !body?.contentType) {
+  if (!body?.filename || !body?.contentType) {
     return NextResponse.json({ message: "잘못된 요청입니다." }, { status: 400 });
   }
 
-  const child = await getChild(body.childId);
-  if (!child) {
-    return NextResponse.json({ message: "아동을 찾을 수 없습니다." }, { status: 404 });
+  // childId 없이 올리는 경우는 특정 아이와 무관한 "센터 소식" 전용 사진 — 저장 경로만 구분
+  let folderId = "blog";
+  if (body.childId) {
+    const child = await getChild(body.childId);
+    if (!child) {
+      return NextResponse.json({ message: "아동을 찾을 수 없습니다." }, { status: 404 });
+    }
+    folderId = body.childId;
   }
 
   try {
-    const target = await createPhotoUploadTarget(body.childId, body.filename, body.contentType);
+    const target = await createPhotoUploadTarget(folderId, body.filename, body.contentType);
     return NextResponse.json({ ok: true, ...target });
   } catch (e) {
     const message = e instanceof Error ? e.message : "업로드 URL 발급에 실패했습니다.";

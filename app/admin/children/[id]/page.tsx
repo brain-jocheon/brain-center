@@ -142,8 +142,8 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           </div>
           <div className="space-y-4">
             <PhotoUploadForm
-              childId={child.id}
-              otherChildren={otherActiveChildren}
+              lockedChildId={child.id}
+              selectableChildren={otherActiveChildren}
               activityNameSuggestions={activityNames}
             />
             <div className="card">

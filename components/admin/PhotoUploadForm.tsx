@@ -5,6 +5,8 @@
  * [흐름] 파일마다: (1) 서버에서 서명 업로드 URL 발급 → (2) 브라우저에서 Supabase Storage로 직접 업로드
  * (Vercel 요청 본문 4.5MB 제한을 피하기 위해 파일 바이트는 우리 서버를 거치지 않음) →
  * (3) 서버에 메타데이터만 저장. 파일 하나가 실패해도 나머지는 계속 진행합니다.
+ *
+ * 아이 상세 화면(lockedChildId 있음)과 센터 소식 관리 화면(lockedChildId 없음, showBlogToggle) 둘 다에서 씁니다.
  */
 
 import { useMemo, useRef, useState } from "react";
@@ -18,13 +20,19 @@ const ACTIVITY_TYPE_LABEL: Record<string, string> = {
 const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"];
 
 export default function PhotoUploadForm({
-  childId,
-  otherChildren,
+  lockedChildId,
+  selectableChildren,
   activityNameSuggestions,
+  showBlogToggle = false,
+  defaultIsPublicToBlog = false,
+  triggerLabel = "+ 사진 업로드",
 }: {
-  childId: string;
-  otherChildren: { id: string; name: string; grade: string }[];
+  lockedChildId?: string;
+  selectableChildren: { id: string; name: string; grade: string }[];
   activityNameSuggestions: string[];
+  showBlogToggle?: boolean;
+  defaultIsPublicToBlog?: boolean;
+  triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -33,6 +41,7 @@ export default function PhotoUploadForm({
   const [activityType, setActivityType] = useState("class");
   const [description, setDescription] = useState("");
   const [isPublicToParent, setIsPublicToParent] = useState(false);
+  const [isPublicToBlog, setIsPublicToBlog] = useState(defaultIsPublicToBlog);
   const [memo, setMemo] = useState("");
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
   const [childFilter, setChildFilter] = useState("");
@@ -42,11 +51,11 @@ export default function PhotoUploadForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const filteredOtherChildren = useMemo(() => {
+  const filteredChildren = useMemo(() => {
     const q = childFilter.trim().toLowerCase();
-    if (!q) return otherChildren;
-    return otherChildren.filter((c) => c.name.toLowerCase().includes(q));
-  }, [otherChildren, childFilter]);
+    if (!q) return selectableChildren;
+    return selectableChildren.filter((c) => c.name.toLowerCase().includes(q));
+  }, [selectableChildren, childFilter]);
 
   function toggleTag(id: string) {
     setTaggedIds((prev) => {
@@ -62,19 +71,23 @@ export default function PhotoUploadForm({
     setDescription("");
     setMemo("");
     setIsPublicToParent(false);
+    setIsPublicToBlog(defaultIsPublicToBlog);
     setTaggedIds(new Set());
     setChildFilter("");
     setMessage("");
     setProgress([]);
   }
 
+  const studentIds = lockedChildId ? [lockedChildId, ...Array.from(taggedIds)] : Array.from(taggedIds);
+  const canSubmit =
+    files.length > 0 && !!activityDate && !!activityName.trim() && (studentIds.length > 0 || isPublicToBlog);
+
   async function handleUpload() {
-    if (files.length === 0 || !activityDate || !activityName.trim()) return;
+    if (!canSubmit) return;
     setUploading(true);
     setMessage("");
     setProgress([]);
 
-    const studentIds = [childId, ...Array.from(taggedIds)];
     let successCount = 0;
 
     for (const file of files) {
@@ -87,7 +100,7 @@ export default function PhotoUploadForm({
         const urlRes = await fetch("/api/admin/photos/upload-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ childId, filename: file.name, contentType: file.type }),
+          body: JSON.stringify({ childId: lockedChildId, filename: file.name, contentType: file.type }),
         });
         if (!urlRes.ok) {
           const data = await urlRes.json().catch(() => null);
@@ -114,6 +127,7 @@ export default function PhotoUploadForm({
             activityType,
             description: description.trim() || undefined,
             isPublicToParent,
+            isPublicToBlog,
             memo: memo.trim() || undefined,
             studentIds,
           }),
@@ -142,7 +156,7 @@ export default function PhotoUploadForm({
 
   if (!open) {
     return (
-      <button className="btn-primary text-sm" onClick={() => setOpen(true)}>+ 사진 업로드</button>
+      <button className="btn-primary text-sm" onClick={() => setOpen(true)}>{triggerLabel}</button>
     );
   }
 
@@ -189,10 +203,20 @@ export default function PhotoUploadForm({
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 mt-6 text-sm">
-          <input type="checkbox" checked={isPublicToParent} onChange={(e) => setIsPublicToParent(e.target.checked)} />
-          학부모에게 공개
-        </label>
+        <div className="flex flex-col gap-1.5 mt-6 text-sm">
+          {lockedChildId && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={isPublicToParent} onChange={(e) => setIsPublicToParent(e.target.checked)} />
+              학부모에게 공개
+            </label>
+          )}
+          {showBlogToggle && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={isPublicToBlog} onChange={(e) => setIsPublicToBlog(e.target.checked)} />
+              센터 소식에 게시 (로그인한 모든 학부모에게 노출)
+            </label>
+          )}
+        </div>
       </div>
 
       <label className="block mt-4">
@@ -204,9 +228,11 @@ export default function PhotoUploadForm({
         <textarea className="input min-h-16" value={memo} onChange={(e) => setMemo(e.target.value)} />
       </label>
 
-      {otherChildren.length > 0 && (
+      {selectableChildren.length > 0 && (
         <div className="mt-4">
-          <span className="block text-sm font-medium mb-1.5">함께 나온 다른 아이 (선택)</span>
+          <span className="block text-sm font-medium mb-1.5">
+            {lockedChildId ? "함께 나온 다른 아이 (선택)" : "사진에 나온 아이 (선택, 태그한 아이 부모에게도 개별 공개 가능)"}
+          </span>
           <input
             className="input mb-2"
             placeholder="이름으로 검색"
@@ -214,8 +240,8 @@ export default function PhotoUploadForm({
             onChange={(e) => setChildFilter(e.target.value)}
           />
           <div className="max-h-40 overflow-y-auto rounded-xl border border-sage-100 p-2 space-y-1">
-            {filteredOtherChildren.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">검색 결과가 없습니다.</p>}
-            {filteredOtherChildren.map((c) => (
+            {filteredChildren.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">검색 결과가 없습니다.</p>}
+            {filteredChildren.map((c) => (
               <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-sage-50">
                 <input type="checkbox" checked={taggedIds.has(c.id)} onChange={() => toggleTag(c.id)} />
                 {c.name} <span className="text-ink/40 text-xs">{c.grade}</span>
@@ -233,11 +259,7 @@ export default function PhotoUploadForm({
       {message && <p className="text-sm text-sage-600 mt-2">{message}</p>}
 
       <div className="flex items-center gap-2 mt-5">
-        <button
-          className="btn-primary"
-          disabled={uploading || files.length === 0 || !activityDate || !activityName.trim()}
-          onClick={handleUpload}
-        >
+        <button className="btn-primary" disabled={uploading || !canSubmit} onClick={handleUpload}>
           {uploading ? "업로드 중..." : "업로드"}
         </button>
         <button className="btn-ghost" onClick={() => { reset(); setOpen(false); }}>취소</button>

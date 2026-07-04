@@ -303,7 +303,7 @@ const ALLOWED_PHOTO_EXT: Record<string, string> = {
 };
 
 const PHOTO_SELECT =
-  "id, storagePath:storage_path, activityDate:activity_date, activityName:activity_name, activityType:activity_type, description, isPublicToParent:is_public_to_parent, memo, createdAt:created_at, updatedAt:updated_at";
+  "id, storagePath:storage_path, activityDate:activity_date, activityName:activity_name, activityType:activity_type, description, isPublicToParent:is_public_to_parent, isPublicToBlog:is_public_to_blog, memo, createdAt:created_at, updatedAt:updated_at";
 
 async function attachStudentIds(photos: Omit<ActivityPhoto, "studentIds">[]): Promise<ActivityPhoto[]> {
   if (photos.length === 0) return [];
@@ -328,6 +328,20 @@ export async function getPhotosByChild(childId: string, opts?: { onlyPublic?: bo
 
   let query = db().from("activity_photos").select(PHOTO_SELECT).in("id", photoIds).order("activity_date", { ascending: false });
   if (opts?.onlyPublic) query = query.eq("is_public_to_parent", true);
+  const { data, error } = await query;
+  if (error) throw error;
+  return attachStudentIds((data ?? []) as unknown as Omit<ActivityPhoto, "studentIds">[]);
+}
+
+/**
+ * 특정 아이 태그와 무관한 사진 목록 (activity_date 최신순).
+ * onlyPublic이면 "센터 소식"에 실제 게시된(is_public_to_blog=true) 것만 (학부모 화면용).
+ * 옵션 없이 호출하면 전체 사진을 반환 — 관리자 "센터 소식 관리" 화면이 토글을 끈 게시물도
+ * 계속 찾아서 다시 켤 수 있도록 전체를 봐야 하기 때문.
+ */
+export async function getBlogPhotos(opts?: { onlyPublic?: boolean }): Promise<ActivityPhoto[]> {
+  let query = db().from("activity_photos").select(PHOTO_SELECT).order("activity_date", { ascending: false });
+  if (opts?.onlyPublic) query = query.eq("is_public_to_blog", true);
   const { data, error } = await query;
   if (error) throw error;
   return attachStudentIds((data ?? []) as unknown as Omit<ActivityPhoto, "studentIds">[]);
@@ -358,9 +372,13 @@ function extFromFilename(filename: string): string {
   return m ? m[1].toLowerCase() : "";
 }
 
-/** 업로드용 서명 URL 발급 — 파일 바이트는 이 서버를 거치지 않고 클라이언트가 Storage에 직접 올림 */
+/**
+ * 업로드용 서명 URL 발급 — 파일 바이트는 이 서버를 거치지 않고 클라이언트가 Storage에 직접 올림.
+ * folderId는 저장 경로 구분용일 뿐 실제 태그와 무관 — 특정 아이 페이지에서 올리면 그 아이 id,
+ * 센터 소식 작성 화면처럼 특정 아이 없이 올리면 "blog"를 넘긴다.
+ */
 export async function createPhotoUploadTarget(
-  childId: string,
+  folderId: string,
   filename: string,
   contentType: string
 ): Promise<{ path: string; token: string }> {
@@ -369,7 +387,7 @@ export async function createPhotoUploadTarget(
   if (!expectedMime || expectedMime !== contentType) {
     throw new Error("허용되지 않는 파일 형식입니다. (jpg, jpeg, png, webp만 가능)");
   }
-  const path = `${childId}/${randomBytes(8).toString("hex")}.${ext}`;
+  const path = `${folderId}/${randomBytes(8).toString("hex")}.${ext}`;
   const { data, error } = await db().storage.from(PHOTO_BUCKET).createSignedUploadUrl(path);
   if (error) throw error;
   return { path, token: data.token };
@@ -382,6 +400,7 @@ export interface ActivityPhotoInput {
   activityType: ActivityPhoto["activityType"];
   description?: string;
   isPublicToParent: boolean;
+  isPublicToBlog: boolean;
   memo?: string;
   studentIds: string[];
 }
@@ -397,6 +416,7 @@ export async function createActivityPhoto(input: ActivityPhotoInput): Promise<Ac
     activity_type: input.activityType,
     description: input.description || null,
     is_public_to_parent: input.isPublicToParent,
+    is_public_to_blog: input.isPublicToBlog,
     memo: input.memo || null,
     created_at: now,
     updated_at: now,
@@ -425,6 +445,7 @@ export async function updateActivityPhoto(
   if (patch.activityType !== undefined) row.activity_type = patch.activityType;
   if (patch.description !== undefined) row.description = patch.description || null;
   if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  if (patch.isPublicToBlog !== undefined) row.is_public_to_blog = patch.isPublicToBlog;
   if (patch.memo !== undefined) row.memo = patch.memo || null;
 
   const { data, error } = await db().from("activity_photos").update(row).eq("id", id).select("id");

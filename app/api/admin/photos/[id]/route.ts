@@ -21,6 +21,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         activityType?: string;
         description?: string;
         isPublicToParent?: boolean;
+        isPublicToBlog?: boolean;
         memo?: string;
         studentIds?: string[];
       }
@@ -32,9 +33,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.activityType !== undefined && !ACTIVITY_TYPES.includes(body.activityType as ActivityPhoto["activityType"])) {
     return NextResponse.json({ message: "활동 유형이 올바르지 않습니다." }, { status: 400 });
   }
-  if (body.studentIds !== undefined && body.studentIds.length === 0) {
-    return NextResponse.json({ message: "사진에 태그할 아이를 한 명 이상 선택해 주세요." }, { status: 400 });
-  }
 
   const found = await updateActivityPhoto(params.id, {
     activityDate: body.activityDate?.trim(),
@@ -42,6 +40,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     activityType: body.activityType as ActivityPhoto["activityType"] | undefined,
     description: body.description?.trim(),
     isPublicToParent: body.isPublicToParent,
+    isPublicToBlog: body.isPublicToBlog,
     memo: body.memo?.trim(),
     studentIds: body.studentIds,
   });

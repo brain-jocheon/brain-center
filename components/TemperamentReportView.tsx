@@ -6,8 +6,17 @@
 import type { MaskedReport, ParentPhoto } from "@/lib/types";
 import ScoreBars from "./ScoreBars";
 import ActivityAlbumSection from "./ActivityAlbumSection";
+import CenterNewsSection from "./CenterNewsSection";
 
-export default function TemperamentReportView({ report, photos }: { report: MaskedReport; photos: ParentPhoto[] }) {
+export default function TemperamentReportView({
+  report,
+  photos,
+  blogPhotos,
+}: {
+  report: MaskedReport;
+  photos: ParentPhoto[];
+  blogPhotos: ParentPhoto[];
+}) {
   return (
     <main className="min-h-screen pb-14">
       <header className="bg-sage-700 text-white px-6 pt-10 pb-14 rounded-b-[2rem]">
@@ -93,6 +102,7 @@ export default function TemperamentReportView({ report, photos }: { report: Mask
         </section>
 
         <ActivityAlbumSection photos={photos} />
+        <CenterNewsSection photos={blogPhotos} />
 
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           본 결과지는 보호자 상담 및 가정 지도 참고용이며,
