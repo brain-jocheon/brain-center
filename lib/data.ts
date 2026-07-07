@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -484,4 +484,67 @@ export async function createSignedPhotoUrl(path: string, expiresIn = 600): Promi
 export async function deletePhotoFile(path: string): Promise<void> {
   const { error } = await db().storage.from(PHOTO_BUCKET).remove([path]);
   if (error) throw error;
+}
+
+/* ---------------- 홈페이지 관리: 센터소개/위치 + 공지사항 ---------------- */
+
+// site_settings 테이블이 아직 없거나(마이그레이션 전) 행이 비어 있을 때를 위한 기본값 —
+// 지금 화면에 있던 문구와 동일하게 맞춰서, 마이그레이션 전에도 홈페이지가 그대로 보이게 함
+export const DEFAULT_ABOUT_TEXT =
+  "학습심리브레인센터는 아동·청소년의 기질, 정서, 학습, 뇌기능을 종합적으로 이해하고 맞춤형 성장을 지원하는 전문 교육·상담 센터입니다.\n\n검사와 상담, 뉴로피드백 훈련, 정서·자존감 프로그램을 통해 아이의 강점을 발견하고 안정적인 학습과 생활 성장을 돕습니다.";
+
+const SITE_SETTINGS_SELECT = "aboutText:about_text, address, phone, updatedAt:updated_at";
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const { data, error } = await db().from("site_settings").select(SITE_SETTINGS_SELECT).eq("id", "default").maybeSingle();
+  if (error) throw error;
+  const row = data as unknown as SiteSettings | null;
+  return {
+    aboutText: row?.aboutText || DEFAULT_ABOUT_TEXT,
+    address: row?.address || undefined,
+    phone: row?.phone || undefined,
+    updatedAt: row?.updatedAt || "",
+  };
+}
+
+export async function updateSiteSettings(patch: { aboutText?: string; address?: string; phone?: string }): Promise<void> {
+  const row: Record<string, unknown> = { id: "default", updated_at: new Date().toISOString() };
+  if (patch.aboutText !== undefined) row.about_text = patch.aboutText || null;
+  if (patch.address !== undefined) row.address = patch.address || null;
+  if (patch.phone !== undefined) row.phone = patch.phone || null;
+  const { error } = await db().from("site_settings").upsert(row, { onConflict: "id" });
+  if (error) throw error;
+}
+
+const NOTICE_SELECT = "id, title, body, createdAt:created_at, updatedAt:updated_at";
+
+/** 공지사항 목록 (최신순). 공개 홈페이지·관리자 화면 공용 — 별도 비공개 상태 없음 */
+export async function getNotices(): Promise<Notice[]> {
+  const { data, error } = await db().from("notices").select(NOTICE_SELECT).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as Notice[];
+}
+
+export async function createNotice(input: { title: string; body: string }): Promise<Notice> {
+  const id = `notice_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = { id, title: input.title, body: input.body, created_at: now, updated_at: now };
+  const { error } = await db().from("notices").insert(row);
+  if (error) throw error;
+  return { id, title: input.title, body: input.body, createdAt: now, updatedAt: now };
+}
+
+export async function updateNotice(id: string, patch: { title?: string; body?: string }): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.title !== undefined) row.title = patch.title;
+  if (patch.body !== undefined) row.body = patch.body;
+  const { data, error } = await db().from("notices").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+export async function deleteNotice(id: string): Promise<boolean> {
+  const { data, error } = await db().from("notices").delete().eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }

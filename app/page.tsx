@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getSiteSettings, getNotices, DEFAULT_ABOUT_TEXT } from "@/lib/data";
+import type { SiteSettings, Notice } from "@/lib/types";
 
 /**
  * 첫 화면 (센터 소개형 홈페이지)
@@ -10,8 +12,28 @@ import Link from "next/link";
  * [주의] 센터 소식 섹션은 실제 아이 활동 사진을 노출하지 않습니다.
  * 활동 사진/소식은 "로그인한 학부모에게만" 보여주기로 정한 기존 결정과
  * 충돌하지 않도록, 여기서는 안내 문구만 두고 실제 사진은 넣지 않습니다.
+ *
+ * 센터소개/위치/연락처/공지사항은 관리자 화면(/admin/site)에서 편집하며,
+ * 여기서는 그 값을 그대로 불러와 보여줍니다. site_settings/notices 테이블이
+ * 아직 마이그레이션 전이어도(운영 배포 순서상 코드가 먼저 나갈 수 있음)
+ * 공개 홈페이지가 깨지지 않도록 안전한 기본값으로 대체합니다.
  */
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  let settings: SiteSettings = { aboutText: DEFAULT_ABOUT_TEXT, updatedAt: "" };
+  let notices: Notice[] = [];
+  try {
+    settings = await getSiteSettings();
+  } catch {
+    // site_settings 테이블 마이그레이션 전 — 기본 문구로 대체
+  }
+  try {
+    notices = await getNotices();
+  } catch {
+    // notices 테이블 마이그레이션 전 — 공지 없음으로 대체
+  }
+
   return (
     <main className="min-h-screen">
       {/* 상단 네비게이션 */}
@@ -62,15 +84,15 @@ export default function Home() {
         <section id="about" className="scroll-mt-20 -mt-14 mb-16">
           <div className="card max-w-3xl mx-auto py-10 px-8 text-center">
             <p className="section-label mb-3">센터 소개</p>
-            <p className="text-[15px] sm:text-base leading-loose text-ink/80">
-              학습심리브레인센터는 아동·청소년의 기질, 정서, 학습, 뇌기능을
-              종합적으로 이해하고 맞춤형 성장을 지원하는 전문 교육·상담
-              센터입니다.
-              <br />
-              <br />
-              검사와 상담, 뉴로피드백 훈련, 정서·자존감 프로그램을 통해
-              아이의 강점을 발견하고 안정적인 학습과 생활 성장을 돕습니다.
+            <p className="text-[15px] sm:text-base leading-loose text-ink/80 whitespace-pre-line">
+              {settings.aboutText}
             </p>
+            {(settings.address || settings.phone) && (
+              <div className="mt-6 pt-6 border-t border-sage-100 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-ink/60">
+                {settings.address && <span>📍 {settings.address}</span>}
+                {settings.phone && <span>📞 {settings.phone}</span>}
+              </div>
+            )}
           </div>
         </section>
 
@@ -98,6 +120,27 @@ export default function Home() {
             />
           </div>
         </section>
+
+        {/* 공지사항 (관리자 화면에서 작성, 로그인 없이 누구나 열람 가능) */}
+        {notices.length > 0 && (
+          <section id="notices" className="scroll-mt-20 mb-20">
+            <div className="text-center mb-8">
+              <p className="section-label mb-2">공지사항</p>
+              <h2 className="text-xl sm:text-2xl font-bold">센터 소식을 전해드려요</h2>
+            </div>
+            <div className="max-w-2xl mx-auto space-y-3">
+              {notices.slice(0, 5).map((n) => (
+                <div key={n.id} className="card">
+                  <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                    <p className="font-bold">{n.title}</p>
+                    <p className="text-xs text-ink/35 shrink-0">{n.createdAt.slice(0, 10)}</p>
+                  </div>
+                  <p className="text-sm text-ink/70 whitespace-pre-line leading-relaxed">{n.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* 센터 소식/활동 미리보기 (실제 사진은 학부모 전용 - 여기서는 안내만) */}
         <section id="news" className="scroll-mt-20 mb-20">

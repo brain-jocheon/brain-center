@@ -32,6 +32,7 @@ export default async function AdminHome() {
           <h1 className="text-lg font-bold">아동 목록</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/site" className="btn-ghost text-sm">홈페이지 관리</Link>
           <Link href="/admin/blog" className="btn-ghost text-sm">센터 소식 관리</Link>
           <LogoutButton />
         </div>

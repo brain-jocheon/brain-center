@@ -132,3 +132,20 @@ export interface ParentPhoto {
   activityType: ActivityPhoto["activityType"];
   description?: string;
 }
+
+/** 공개 홈페이지 문구 (센터소개/위치/연락처) — 로그인 없이 누구나 보는 값이므로 개인정보 절대 금지 */
+export interface SiteSettings {
+  aboutText: string;
+  address?: string;
+  phone?: string;
+  updatedAt: string;
+}
+
+/** 공개 홈페이지 공지사항 — 작성 즉시 누구나 볼 수 있음 (아이 개인정보/사진 넣지 말 것) */
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}

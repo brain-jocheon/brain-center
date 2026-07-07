@@ -155,3 +155,33 @@ create index if not exists photo_students_student_idx on photo_students(student_
 alter table activity_photos enable row level security;
 alter table photo_students enable row level security;
 grant select, insert, update, delete on activity_photos, photo_students to service_role;
+
+-- =====================================================================
+-- 홈페이지 관리: 센터소개/위치 편집 + 공지사항
+-- ---------------------------------------------------------------------
+-- 공지사항은 로그인 없이 볼 수 있는 공개 홈페이지에 그대로 노출되므로,
+-- 활동 사진(activity_photos)과 달리 별도 공개 플래그 없이 작성 즉시 공개됩니다.
+-- 아이 관련 개인정보/사진은 여기 절대 넣지 않도록 관리자 화면 안내문으로 주의를 줍니다.
+-- =====================================================================
+
+create table if not exists site_settings (
+  id text primary key default 'default',
+  about_text text,
+  address text,
+  phone text,
+  updated_at timestamptz not null default now()
+);
+insert into site_settings (id) values ('default') on conflict (id) do nothing;
+
+create table if not exists notices (
+  id text primary key,
+  title text not null,
+  body text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists notices_created_at_idx on notices(created_at desc);
+
+alter table site_settings enable row level security;
+alter table notices enable row level security;
+grant select, insert, update, delete on site_settings, notices to service_role;
