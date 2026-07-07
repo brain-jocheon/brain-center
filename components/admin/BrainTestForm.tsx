@@ -12,8 +12,10 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import { BRAIN_INDICATOR_DESCRIPTIONS, BRAIN_INDICATOR_LABEL_SUGGESTIONS } from "@/lib/content/brainTest";
 
 const BRAIN_TEST_BUCKET = "brain-test-files";
+const MAIN_INDICATOR_LABELS = Object.keys(BRAIN_INDICATOR_DESCRIPTIONS);
 
 export default function BrainTestForm({ childId }: { childId: string }) {
   const [open, setOpen] = useState(false);
@@ -36,6 +38,14 @@ export default function BrainTestForm({ childId }: { childId: string }) {
   }
   function removeIndicator(i: number) {
     setIndicators((prev) => prev.filter((_, idx) => idx !== i));
+  }
+  function loadMainIndicators() {
+    setIndicators((prev) => {
+      const existingLabels = new Set(prev.map((r) => r.label));
+      const rows = prev.filter((r) => r.label || r.value);
+      const toAdd = MAIN_INDICATOR_LABELS.filter((l) => !existingLabels.has(l)).map((label) => ({ label, value: "" }));
+      return [...rows, ...toAdd];
+    });
   }
 
   function reset() {
@@ -145,19 +155,25 @@ export default function BrainTestForm({ childId }: { childId: string }) {
       </div>
 
       <div className="mt-4">
-        <span className="block text-sm font-medium mb-1.5">지표 (이름·값 자유 입력)</span>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="block text-sm font-medium">지표</span>
+          <button type="button" className="text-xs text-sage-600 underline underline-offset-2" onClick={loadMainIndicators}>
+            + 파낙토스 핵심 지표 8개 불러오기
+          </button>
+        </div>
         <div className="space-y-2">
           {indicators.map((row, i) => (
             <div key={i} className="flex gap-2">
               <input
                 className="input !py-2 text-sm"
-                placeholder="예: 세타/베타 비율"
+                list="brain-indicator-suggestions"
+                placeholder="예: 주의지수"
                 value={row.label}
                 onChange={(e) => updateIndicator(i, { label: e.target.value })}
               />
               <input
                 className="input !py-2 text-sm"
-                placeholder="예: 1.94"
+                placeholder="예: 65"
                 value={row.value}
                 onChange={(e) => updateIndicator(i, { value: e.target.value })}
               />
@@ -172,6 +188,9 @@ export default function BrainTestForm({ childId }: { childId: string }) {
             </div>
           ))}
         </div>
+        <datalist id="brain-indicator-suggestions">
+          {BRAIN_INDICATOR_LABEL_SUGGESTIONS.map((label) => <option key={label} value={label} />)}
+        </datalist>
         <button type="button" className="text-xs text-sage-600 underline underline-offset-2 mt-2" onClick={addIndicator}>
           + 지표 추가
         </button>
