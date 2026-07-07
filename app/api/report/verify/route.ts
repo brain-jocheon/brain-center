@@ -19,10 +19,10 @@
 import { NextResponse } from "next/server";
 import {
   getAccessByToken, getReport, getChild, getMtprisReport, logAccess,
-  getPhotosByChild, getBlogPhotos, createSignedPhotoUrl,
+  getPhotosByChild, getBlogPhotos, createSignedPhotoUrl, getBrainTestsByChild,
 } from "@/lib/data";
 import { verifyParentPassword, maskName } from "@/lib/auth";
-import type { ActivityPhoto, MaskedReport, ParentPhoto } from "@/lib/types";
+import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent } from "@/lib/mtpris/mask";
 
@@ -75,6 +75,20 @@ async function getCenterNewsPhotos(): Promise<ParentPhoto[]> {
   return toParentPhotos(photos);
 }
 
+/**
+ * 공개 설정된 뇌기능검사만, 원본 파일 없이 지표·의견만.
+ * [주의] brain_tests 테이블이 아직 마이그레이션 전이어도(배포 순서상 코드가 먼저
+ * 나갈 수 있음) 기존 리포트 열람 전체가 깨지지 않도록 실패 시 빈 배열로 대체.
+ */
+async function getParentBrainTests(childId: string): Promise<ParentBrainTest[]> {
+  try {
+    const tests = await getBrainTestsByChild(childId, { onlyPublic: true });
+    return tests.map((t) => ({ testDate: t.testDate, indicators: t.indicators, opinion: t.opinion }));
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(req: Request) {
   const { token, password } = await req.json().catch(() => ({}));
 
@@ -117,7 +131,11 @@ export async function POST(req: Request) {
     const fullContent = generateMtprisContent(raw);
     // [보안] 상담사 전용 정보(원자료, 다짐, 상담 질문) 제거 후 전달
     const parentContent = maskMtprisContentForParent(fullContent);
-    const [photos, blogPhotos] = await Promise.all([getParentPhotos(raw.childId), getCenterNewsPhotos()]);
+    const [photos, blogPhotos, brainTests] = await Promise.all([
+      getParentPhotos(raw.childId),
+      getCenterNewsPhotos(),
+      getParentBrainTests(raw.childId),
+    ]);
 
     return NextResponse.json(
       {
@@ -129,6 +147,7 @@ export async function POST(req: Request) {
         counselor: raw.counselor,
         photos,
         blogPhotos,
+        brainTests,
       },
       { headers: NO_STORE }
     );
@@ -143,7 +162,11 @@ export async function POST(req: Request) {
   }
 
   const child = await getChild(report.childId);
-  const [photos, blogPhotos] = await Promise.all([getParentPhotos(report.childId), getCenterNewsPhotos()]);
+  const [photos, blogPhotos, brainTests] = await Promise.all([
+    getParentPhotos(report.childId),
+    getCenterNewsPhotos(),
+    getParentBrainTests(report.childId),
+  ]);
 
   // [보안] 실명 제거 + 마스킹된 이름만 포함하여 응답
   const { childId, ...rest } = report;
@@ -153,5 +176,5 @@ export async function POST(req: Request) {
     childGrade: child?.grade ?? "",
   };
 
-  return NextResponse.json({ kind: "temperament", report: masked, photos, blogPhotos }, { headers: NO_STORE });
+  return NextResponse.json({ kind: "temperament", report: masked, photos, blogPhotos, brainTests }, { headers: NO_STORE });
 }

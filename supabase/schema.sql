@@ -194,3 +194,34 @@ grant select, insert, update, delete on site_settings, notices to service_role;
 -- 세어 무차별 대입을 늦추는 용도로 씁니다 (token 컬럼을 nullable로 변경).
 -- =====================================================================
 alter table access_logs alter column token drop not null;
+
+-- =====================================================================
+-- 뇌기능검사: 보고서 파일 업로드(보관용) + 관리자가 직접 입력하는 지표·의견
+-- ---------------------------------------------------------------------
+-- 장비마다 보고서 양식이 달라 자동으로 숫자를 읽어내는 건 정확도가 낮으므로,
+-- 원본 파일은 비공개로 보관만 하고 지표(label/value 자유 입력)와 의견은
+-- 상담사가 직접 입력합니다. is_public_to_parent가 true일 때만 학부모 화면에
+-- (원본 파일 없이) 지표·의견 요약만 노출됩니다.
+-- =====================================================================
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('brain-test-files', 'brain-test-files', false, 15728640)
+on conflict (id) do nothing;
+
+create table if not exists brain_tests (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  test_date date not null,
+  counselor text not null,
+  file_storage_path text,
+  file_name text,
+  indicators jsonb not null default '[]',
+  opinion text,
+  is_public_to_parent boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists brain_tests_child_id_idx on brain_tests(child_id);
+
+alter table brain_tests enable row level security;
+grant select, insert, update, delete on brain_tests to service_role;

@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -624,4 +624,121 @@ export async function deleteNotice(id: string): Promise<boolean> {
   const { data, error } = await db().from("notices").delete().eq("id", id).select("id");
   if (error) throw error;
   return (data?.length ?? 0) > 0;
+}
+
+/* ---------------- 뇌기능검사 ---------------- */
+
+export const BRAIN_TEST_BUCKET = "brain-test-files";
+const ALLOWED_BRAIN_FILE_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+};
+
+const BRAIN_TEST_SELECT =
+  "id, childId:child_id, testDate:test_date, counselor, fileStoragePath:file_storage_path, fileName:file_name, indicators, opinion, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at";
+
+export async function getBrainTestsByChild(childId: string, opts?: { onlyPublic?: boolean }): Promise<BrainTest[]> {
+  let query = db().from("brain_tests").select(BRAIN_TEST_SELECT).eq("child_id", childId).order("test_date", { ascending: false });
+  if (opts?.onlyPublic) query = query.eq("is_public_to_parent", true);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as BrainTest[];
+}
+
+export async function getBrainTest(id: string): Promise<BrainTest | null> {
+  const { data, error } = await db().from("brain_tests").select(BRAIN_TEST_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as unknown as BrainTest) ?? null;
+}
+
+function extFromBrainFilename(filename: string): string {
+  const m = /\.([a-zA-Z0-9]+)$/.exec(filename);
+  return m ? m[1].toLowerCase() : "";
+}
+
+/** 업로드용 서명 URL 발급 — 파일 바이트는 이 서버를 거치지 않고 클라이언트가 Storage에 직접 올림 */
+export async function createBrainFileUploadTarget(
+  childId: string,
+  filename: string,
+  contentType: string
+): Promise<{ path: string; token: string }> {
+  const ext = extFromBrainFilename(filename);
+  const expectedMime = ALLOWED_BRAIN_FILE_EXT[ext];
+  if (!expectedMime || expectedMime !== contentType) {
+    throw new Error("허용되지 않는 파일 형식입니다. (PDF만 가능)");
+  }
+  const path = `${childId}/${randomBytes(8).toString("hex")}.${ext}`;
+  const { data, error } = await db().storage.from(BRAIN_TEST_BUCKET).createSignedUploadUrl(path);
+  if (error) throw error;
+  return { path, token: data.token };
+}
+
+export interface BrainTestInput {
+  childId: string;
+  testDate: string;
+  counselor: string;
+  fileStoragePath?: string;
+  fileName?: string;
+  indicators: BrainIndicator[];
+  opinion?: string;
+  isPublicToParent: boolean;
+}
+
+export async function createBrainTest(input: BrainTestInput): Promise<BrainTest> {
+  const id = `braintest_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    child_id: input.childId,
+    test_date: input.testDate,
+    counselor: input.counselor,
+    file_storage_path: input.fileStoragePath || null,
+    file_name: input.fileName || null,
+    indicators: input.indicators,
+    opinion: input.opinion || null,
+    is_public_to_parent: input.isPublicToParent,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("brain_tests").insert(row);
+  if (error) throw error;
+  const test = await getBrainTest(id);
+  if (!test) throw new Error("뇌기능검사 생성 직후 조회에 실패했습니다.");
+  return test;
+}
+
+export async function updateBrainTest(
+  id: string,
+  patch: Partial<Omit<BrainTestInput, "childId" | "fileStoragePath" | "fileName">>
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.testDate !== undefined) row.test_date = patch.testDate;
+  if (patch.counselor !== undefined) row.counselor = patch.counselor;
+  if (patch.indicators !== undefined) row.indicators = patch.indicators;
+  if (patch.opinion !== undefined) row.opinion = patch.opinion || null;
+  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+
+  const { data, error } = await db().from("brain_tests").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 뇌기능검사 삭제 (DB 행 삭제 후 file_storage_path를 반환 — 호출부가 실제 파일도 지워야 함) */
+export async function deleteBrainTest(id: string): Promise<string | null> {
+  const { data, error } = await db().from("brain_tests").select("file_storage_path").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { error: delError } = await db().from("brain_tests").delete().eq("id", id);
+  if (delError) throw delError;
+  return (data as { file_storage_path: string | null }).file_storage_path;
+}
+
+export async function createSignedBrainFileUrl(path: string, expiresIn = 600): Promise<string | null> {
+  const { data, error } = await db().storage.from(BRAIN_TEST_BUCKET).createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+export async function deleteBrainFile(path: string): Promise<void> {
+  const { error } = await db().storage.from(BRAIN_TEST_BUCKET).remove([path]);
+  if (error) throw error;
 }

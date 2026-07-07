@@ -149,3 +149,32 @@ export interface Notice {
   createdAt: string;
   updatedAt: string;
 }
+
+/** 뇌기능검사 지표 한 줄 — 장비마다 항목이 달라 이름/값 모두 자유 입력 */
+export interface BrainIndicator {
+  label: string;
+  value: string;
+}
+
+/** 뇌기능검사 (관리자 전체 뷰) — 원본 파일은 보관용, 실제 해석은 상담사가 직접 입력 */
+export interface BrainTest {
+  id: string;
+  childId: string;
+  testDate: string;
+  counselor: string;
+  /** [보안] 관리자 전용 — 학부모 화면에는 원본 파일을 내려주지 않음 */
+  fileStoragePath?: string;
+  fileName?: string;
+  indicators: BrainIndicator[];
+  opinion?: string;
+  isPublicToParent: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 학부모 화면에 내려가는 뇌기능검사 요약 — 원본 파일 없이 지표·의견만 */
+export interface ParentBrainTest {
+  testDate: string;
+  indicators: BrainIndicator[];
+  opinion?: string;
+}

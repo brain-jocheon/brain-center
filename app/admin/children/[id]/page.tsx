@@ -8,12 +8,15 @@ import { notFound } from "next/navigation";
 import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
+  getBrainTestsByChild, createSignedBrainFileUrl,
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
 import ChildInfoPanel from "@/components/admin/ChildInfoPanel";
 import PhotoUploadForm from "@/components/admin/PhotoUploadForm";
 import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery";
+import BrainTestForm from "@/components/admin/BrainTestForm";
+import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/BrainTestList";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +28,22 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   const child = await getChild(params.id);
   if (!child) notFound();
 
-  const [reports, mtprisReports, tokens, allChildren, photos, activityNames] = await Promise.all([
+  const [reports, mtprisReports, tokens, allChildren, photos, activityNames, brainTests] = await Promise.all([
     getReportsByChild(child.id),
     getMtprisReportsByChild(child.id),
     getAccessTokens(),
     getChildren(),
     getPhotosByChild(child.id),
     getActivityNames(),
+    getBrainTestsByChild(child.id),
   ]);
+
+  const brainTestsWithUrl: BrainTestWithFileUrl[] = await Promise.all(
+    brainTests.map(async (t) => ({
+      ...t,
+      fileUrl: t.fileStoragePath ? (await createSignedBrainFileUrl(t.fileStoragePath)) ?? undefined : undefined,
+    }))
+  );
 
   const otherActiveChildren = allChildren
     .filter((c) => c.id !== child.id && c.status === "active")
@@ -136,6 +147,16 @@ export default async function ChildDetail({ params }: { params: { id: string } }
             </section>
           );
         })}
+
+        <section>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <p className="section-label">뇌기능검사</p>
+          </div>
+          <div className="space-y-4">
+            <BrainTestForm childId={child.id} />
+            <BrainTestList tests={brainTestsWithUrl} />
+          </div>
+        </section>
 
         <section>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">

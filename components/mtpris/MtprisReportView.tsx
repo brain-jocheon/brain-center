@@ -10,12 +10,13 @@
  */
 import { useState } from "react";
 import type { ParentMtprisContent } from "@/lib/mtpris/mask";
-import type { ParentPhoto } from "@/lib/types";
+import type { ParentPhoto, ParentBrainTest } from "@/lib/types";
 import type { MainCode } from "@/lib/content/mtpris/types";
 import QuadrantChart from "./QuadrantChart";
 import SimpleTraitView from "./SimpleTraitView";
 import ActivityAlbumSection from "../ActivityAlbumSection";
 import CenterNewsSection from "../CenterNewsSection";
+import BrainTestSummarySection from "../BrainTestSummarySection";
 
 export default function MtprisReportView({
   content,
@@ -25,6 +26,7 @@ export default function MtprisReportView({
   counselor,
   photos,
   blogPhotos,
+  brainTests,
 }: {
   content: ParentMtprisContent;
   childMaskedName: string;
@@ -33,6 +35,7 @@ export default function MtprisReportView({
   counselor: string;
   photos: ParentPhoto[];
   blogPhotos: ParentPhoto[];
+  brainTests: ParentBrainTest[];
 }) {
   const { summary, scoreRows, comparison, trait, rest, talents, learning, career, closingQuote, memo } = content;
   const [mode, setMode] = useState<"detailed" | "simple">("detailed");
@@ -225,6 +228,7 @@ export default function MtprisReportView({
           </>
         )}
 
+        <BrainTestSummarySection tests={brainTests} />
         <ActivityAlbumSection photos={photos} />
         <CenterNewsSection photos={blogPhotos} />
 
