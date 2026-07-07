@@ -11,14 +11,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import CopyLinkButton from "@/components/CopyLinkButton";
 
+/** "YYYY-MM-DD" → "YYMMDD" (생년월일 6자리 자동 입력용) */
+function birthDateToYymmdd(birthDate?: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate ?? "");
+  if (!m) return null;
+  return `${m[1].slice(2)}${m[2]}${m[3]}`;
+}
+
 export default function AccessLinkPanel({
   reportId,
   reportKind,
   active,
+  childBirthDate,
 }: {
   reportId: string;
   reportKind: "temperament" | "mtpris";
   active: { token: string } | null;
+  /** "기본 정보"에 입력된 생년월일 — 비밀번호를 생년월일 6자리로 자동 입력하는 용도 */
+  childBirthDate?: string;
 }) {
   const [issuing, setIssuing] = useState(false);
   const [password, setPassword] = useState("");
@@ -131,6 +141,19 @@ export default function AccessLinkPanel({
           onChange={(e) => setExpiresAt(e.target.value)}
         />
       </div>
+      {birthDateToYymmdd(childBirthDate) ? (
+        <button
+          type="button"
+          className="text-xs text-sage-600 underline underline-offset-2 mt-2"
+          onClick={() => setPassword(birthDateToYymmdd(childBirthDate)!)}
+        >
+          아이 생년월일(YYMMDD)로 자동 입력
+        </button>
+      ) : (
+        <p className="text-[11px] text-ink/35 mt-2">
+          "기본 정보"에 생년월일을 입력하면 생년월일 6자리를 비밀번호로 자동 입력할 수 있어요.
+        </p>
+      )}
       {message && <p className="text-xs text-apricot-600 mt-2">{message}</p>}
       <div className="flex items-center gap-2 mt-3">
         <button className="btn-primary text-sm !py-2.5" disabled={saving || password.length < 4} onClick={handleIssue}>

@@ -131,6 +131,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
                 reportId={r.id}
                 reportKind={r.kind}
                 active={access ? { token: access.token } : null}
+                childBirthDate={child.birthDate}
               />
             </section>
           );
