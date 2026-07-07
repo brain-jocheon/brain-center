@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSiteSettings, getNotices, DEFAULT_ABOUT_TEXT } from "@/lib/data";
 import type { SiteSettings, Notice } from "@/lib/types";
+import HomeParentLogin from "@/components/HomeParentLogin";
 
 /**
  * 첫 화면 (센터 소개형 홈페이지)
@@ -187,6 +188,7 @@ export default async function Home() {
             <Link href="/admin" className="text-xs text-sage-400 underline underline-offset-4">
               센터 관리자 입장
             </Link>
+            <HomeParentLogin />
           </div>
         </section>
       </div>

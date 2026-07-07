@@ -14,7 +14,7 @@
  * =====================================================================
  */
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { MaskedReport, ParentPhoto } from "@/lib/types";
 import type { ParentMtprisContent } from "@/lib/mtpris/mask";
 import TemperamentReportView from "./TemperamentReportView";
@@ -39,28 +39,48 @@ export default function ParentReportViewer({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const submitPassword = useCallback(
+    async (pw: string) => {
+      setError("");
+      setLoading(true);
+      try {
+        const res = await fetch("/api/report/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, password: pw }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.message || "비밀번호가 맞지 않습니다. 다시 확인해 주세요.");
+          return;
+        }
+        const data = (await res.json()) as VerifyResponse;
+        setResult(data);
+      } catch {
+        setError("연결에 문제가 있습니다. 잠시 후 다시 시도해 주세요.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token]
+  );
+
+  // 홈페이지 "아이 이름으로 확인하기"에서 넘어온 경우, 비밀번호를 다시 입력하지 않도록
+  // sessionStorage에 잠깐 남겨둔 값을 1회성으로 읽어 자동 로그인 — 읽는 즉시 지운다.
+  useEffect(() => {
+    const key = `bc_pending_pw_${token}`;
+    const pw = sessionStorage.getItem(key);
+    if (pw) {
+      sessionStorage.removeItem(key);
+      setPassword(pw);
+      submitPassword(pw);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/report/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.message || "비밀번호가 맞지 않습니다. 다시 확인해 주세요.");
-        return;
-      }
-      const data = (await res.json()) as VerifyResponse;
-      setResult(data);
-    } catch {
-      setError("연결에 문제가 있습니다. 잠시 후 다시 시도해 주세요.");
-    } finally {
-      setLoading(false);
-    }
+    await submitPassword(password);
   }
 
   /* ---------- 1단계: 비밀번호 입력 ---------- */

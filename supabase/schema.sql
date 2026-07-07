@@ -185,3 +185,12 @@ create index if not exists notices_created_at_idx on notices(created_at desc);
 alter table site_settings enable row level security;
 alter table notices enable row level security;
 grant select, insert, update, delete on site_settings, notices to service_role;
+
+-- =====================================================================
+-- 홈페이지 "아이 이름 + 비밀번호"로 바로 로그인
+-- ---------------------------------------------------------------------
+-- 고유 링크(토큰) 없이도 홈페이지에서 이름+비밀번호로 결과지를 찾을 수 있게
+-- 합니다. 이 시도는 access_logs에 token=null로 기록해 IP별 시도 횟수를
+-- 세어 무차별 대입을 늦추는 용도로 씁니다 (token 컬럼을 nullable로 변경).
+-- =====================================================================
+alter table access_logs alter column token drop not null;

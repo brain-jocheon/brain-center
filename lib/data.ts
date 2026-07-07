@@ -234,7 +234,7 @@ export async function deactivateAccessToken(token: string): Promise<boolean> {
 
 /** 학부모 링크 열람 시도 기록 (성공/실패 모두) — 실패해도 상위 로직을 막지 않도록 호출부에서 감쌀 것 */
 export async function logAccess(entry: {
-  token: string;
+  token: string | null;
   reportId: string | null;
   success: boolean;
   ip: string | null;
@@ -246,6 +246,83 @@ export async function logAccess(entry: {
     ip: entry.ip,
   });
   if (error) throw error;
+}
+
+/**
+ * 최근 N분 동안 이 IP에서 실패한 시도 횟수 — "아이 이름 + 비밀번호" 로그인은
+ * 고유 링크 없이도 시도할 수 있어 무차별 대입에 더 취약하므로, 이 카운트로
+ * 짧게 속도를 늦춥니다(레이트 리밋). ip가 없으면(프록시 헤더 누락 등) 0을 반환
+ * — 그 경우 별도로 막을 수 없으므로 상위 로직이 통과시킵니다.
+ */
+export async function countRecentFailedAttempts(ip: string | null, windowMinutes: number): Promise<number> {
+  if (!ip) return 0;
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const { count, error } = await db()
+    .from("access_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("ip", ip)
+    .eq("success", false)
+    .gte("viewed_at", since);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** "아이 이름 + 비밀번호" 홈페이지 로그인 후보 — 그 이름을 가진 아이들의 활성 링크 전부 */
+export interface ChildLoginCandidate {
+  token: string;
+  reportId: string;
+  reportKind: "temperament" | "mtpris";
+  passwordHash: string;
+  expiresAt?: string;
+  childId: string;
+  testDate: string;
+}
+
+export async function findActiveAccessEntriesByChildName(name: string): Promise<ChildLoginCandidate[]> {
+  const { data: children, error: childError } = await db().from("children").select("id").eq("name", name);
+  if (childError) throw childError;
+  const childIds = (children ?? []).map((c: { id: string }) => c.id);
+  if (childIds.length === 0) return [];
+
+  const [reportsRes, mtprisRes] = await Promise.all([
+    db().from("reports").select("id, childId:child_id, testDate:test_date").in("child_id", childIds),
+    db().from("mtpris_reports").select("id, childId:child_id, testDate:test_date").in("child_id", childIds),
+  ]);
+  if (reportsRes.error) throw reportsRes.error;
+  if (mtprisRes.error) throw mtprisRes.error;
+
+  const reportMeta = new Map<string, { childId: string; testDate: string; kind: "temperament" | "mtpris" }>();
+  for (const r of (reportsRes.data ?? []) as { id: string; childId: string; testDate: string }[]) {
+    reportMeta.set(r.id, { childId: r.childId, testDate: r.testDate, kind: "temperament" });
+  }
+  for (const r of (mtprisRes.data ?? []) as { id: string; childId: string; testDate: string }[]) {
+    reportMeta.set(r.id, { childId: r.childId, testDate: r.testDate, kind: "mtpris" });
+  }
+  const reportIds = Array.from(reportMeta.keys());
+  if (reportIds.length === 0) return [];
+
+  const { data: tokens, error: tokenError } = await db()
+    .from("access_tokens")
+    .select(ACCESS_SELECT)
+    .in("report_id", reportIds)
+    .eq("active", true);
+  if (tokenError) throw tokenError;
+
+  const candidates: ChildLoginCandidate[] = [];
+  for (const t of (tokens ?? []) as unknown as AccessToken[]) {
+    const meta = reportMeta.get(t.reportId);
+    if (!meta) continue;
+    candidates.push({
+      token: t.token,
+      reportId: t.reportId,
+      reportKind: meta.kind,
+      passwordHash: t.passwordHash,
+      expiresAt: t.expiresAt,
+      childId: meta.childId,
+      testDate: meta.testDate,
+    });
+  }
+  return candidates;
 }
 
 /* ---------------- MT-PRIS 리포트 (원본 입력값만 저장) ---------------- */
