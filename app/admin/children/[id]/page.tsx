@@ -28,22 +28,29 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   const child = await getChild(params.id);
   if (!child) notFound();
 
-  const [reports, mtprisReports, tokens, allChildren, photos, activityNames, brainTests] = await Promise.all([
+  const [reports, mtprisReports, tokens, allChildren, photos, activityNames] = await Promise.all([
     getReportsByChild(child.id),
     getMtprisReportsByChild(child.id),
     getAccessTokens(),
     getChildren(),
     getPhotosByChild(child.id),
     getActivityNames(),
-    getBrainTestsByChild(child.id),
   ]);
 
-  const brainTestsWithUrl: BrainTestWithFileUrl[] = await Promise.all(
-    brainTests.map(async (t) => ({
-      ...t,
-      fileUrl: t.fileStoragePath ? (await createSignedBrainFileUrl(t.fileStoragePath)) ?? undefined : undefined,
-    }))
-  );
+  // [주의] brain_tests 테이블이 아직 마이그레이션 전이어도(배포 순서상 코드가 먼저
+  // 나갈 수 있음) 이 페이지 전체(검사 이력·링크 관리 등)가 깨지지 않도록 별도 처리.
+  let brainTestsWithUrl: BrainTestWithFileUrl[] = [];
+  try {
+    const brainTests = await getBrainTestsByChild(child.id);
+    brainTestsWithUrl = await Promise.all(
+      brainTests.map(async (t) => ({
+        ...t,
+        fileUrl: t.fileStoragePath ? (await createSignedBrainFileUrl(t.fileStoragePath)) ?? undefined : undefined,
+      }))
+    );
+  } catch {
+    // brain_tests 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
 
   const otherActiveChildren = allChildren
     .filter((c) => c.id !== child.id && c.status === "active")
