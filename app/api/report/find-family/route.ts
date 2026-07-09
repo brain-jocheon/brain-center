@@ -3,7 +3,7 @@
  * "아이 이름 + 비밀번호"로 홈페이지 로그인 — 형제자매까지 한 번에 확인
  * ---------------------------------------------------------------------
  * POST { name, password }
- *  → 성공: { children: [{ childId, payload }, ...] } — 입력한 이름의 아이 +
+ *  → 성공: { children: [{ childId, maskedName, token, payload }, ...] } — 입력한 이름의 아이 +
  *          같은 보호자 연락처를 쓰는 형제자매 중 "같은 비밀번호"로도 검증에
  *          성공한 아이만 포함 (형제자매마다 비밀번호가 다르면 그 아이는
  *          제외 — 다른 아이 정보가 검증 없이 노출되는 일은 없습니다)
@@ -99,10 +99,13 @@ export async function POST(req: Request) {
           active: true,
         });
         if (!payload) return null;
-        return { childId: w.childId, maskedName: maskName(child?.name ?? ""), payload };
+        return { childId: w.childId, maskedName: maskName(child?.name ?? ""), token: w.token, payload };
       })
     )
-  ).filter((c): c is { childId: string; maskedName: string; payload: NonNullable<Awaited<ReturnType<typeof buildParentReportPayload>>> } => c !== null);
+  ).filter(
+    (c): c is { childId: string; maskedName: string; token: string; payload: NonNullable<Awaited<ReturnType<typeof buildParentReportPayload>>> } =>
+      c !== null
+  );
 
   if (children.length === 0) {
     return NextResponse.json(

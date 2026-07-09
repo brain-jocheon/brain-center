@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -811,4 +811,83 @@ export async function deleteAttendance(id: string): Promise<boolean> {
   const { data, error } = await db().from("attendance_records").delete().eq("id", id).select("id");
   if (error) throw error;
   return (data?.length ?? 0) > 0;
+}
+
+/* ---------------- 보강 희망일 요청 ---------------- */
+
+const MAKEUP_REQUEST_SELECT =
+  "id, childId:child_id, originalClassDate:original_class_date, requestedDate:requested_date, status, parentMemo:parent_memo, adminMemo:admin_memo, createdAt:created_at, reviewedAt:reviewed_at";
+
+export async function createMakeupRequest(input: {
+  childId: string;
+  originalClassDate?: string;
+  requestedDate: string;
+  parentMemo?: string;
+}): Promise<MakeupRequest> {
+  const id = `mkreq_${randomBytes(6).toString("hex")}`;
+  const row = {
+    id,
+    child_id: input.childId,
+    original_class_date: input.originalClassDate || null,
+    requested_date: input.requestedDate,
+    status: "pending" as const,
+    parent_memo: input.parentMemo || null,
+  };
+  const { error } = await db().from("makeup_requests").insert(row);
+  if (error) throw error;
+  const { data } = await db().from("makeup_requests").select(MAKEUP_REQUEST_SELECT).eq("id", id).maybeSingle();
+  return data as unknown as MakeupRequest;
+}
+
+/** status 지정 없으면 전체(관리자가 이미 처리한 것도 포함) 반환 */
+export async function getMakeupRequests(opts?: { childId?: string; status?: MakeupRequest["status"] }): Promise<MakeupRequest[]> {
+  let query = db().from("makeup_requests").select(MAKEUP_REQUEST_SELECT).order("created_at", { ascending: false });
+  if (opts?.childId) query = query.eq("child_id", opts.childId);
+  if (opts?.status) query = query.eq("status", opts.status);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as MakeupRequest[];
+}
+
+export async function countPendingMakeupRequests(): Promise<number> {
+  const { count, error } = await db()
+    .from("makeup_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** 승인 시, 원래 결석 기록(attendance_records)의 makeup_date도 함께 맞춰줌 */
+export async function reviewMakeupRequest(
+  id: string,
+  decision: "approved" | "rejected",
+  adminMemo?: string
+): Promise<MakeupRequest | null> {
+  const { data: existing, error: fetchError } = await db()
+    .from("makeup_requests")
+    .select(MAKEUP_REQUEST_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!existing) return null;
+  const req = existing as unknown as MakeupRequest;
+
+  const { error } = await db()
+    .from("makeup_requests")
+    .update({ status: decision, admin_memo: adminMemo || null, reviewed_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+
+  if (decision === "approved" && req.originalClassDate) {
+    await upsertAttendance({
+      childId: req.childId,
+      classDate: req.originalClassDate,
+      status: "absent",
+      makeupDate: req.requestedDate,
+    });
+  }
+
+  const { data: updated } = await db().from("makeup_requests").select(MAKEUP_REQUEST_SELECT).eq("id", id).maybeSingle();
+  return updated as unknown as MakeupRequest;
 }

@@ -202,3 +202,16 @@ export interface ParentAttendanceRecord {
   isMakeup: boolean;
   makeupDate?: string;
 }
+
+/** 학부모가 제출한 보강 희망일 요청 — 관리자가 승인해야 실제 출결에 반영됨 */
+export interface MakeupRequest {
+  id: string;
+  childId: string;
+  originalClassDate?: string;
+  requestedDate: string;
+  status: "pending" | "approved" | "rejected";
+  parentMemo?: string;
+  adminMemo?: string;
+  createdAt: string;
+  reviewedAt?: string;
+}

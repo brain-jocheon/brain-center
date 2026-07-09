@@ -29,6 +29,7 @@ export default function MtprisReportView({
   blogPhotos,
   brainTests,
   attendance,
+  token,
 }: {
   content: ParentMtprisContent;
   childMaskedName: string;
@@ -39,6 +40,7 @@ export default function MtprisReportView({
   blogPhotos: ParentPhoto[];
   brainTests: ParentBrainTest[];
   attendance: ParentAttendanceRecord[];
+  token: string;
 }) {
   const { summary, scoreRows, comparison, trait, rest, talents, learning, career, closingQuote, memo } = content;
   const [mode, setMode] = useState<"detailed" | "simple">("detailed");
@@ -231,7 +233,7 @@ export default function MtprisReportView({
           </>
         )}
 
-        <FamilyAttendanceCalendar attendance={attendance} photos={photos} />
+        <FamilyAttendanceCalendar attendance={attendance} photos={photos} token={token} />
         <BrainTestSummarySection tests={brainTests} />
         <ActivityAlbumSection photos={photos} />
         <CenterNewsSection photos={blogPhotos} />

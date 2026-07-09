@@ -16,12 +16,14 @@ export default function TemperamentReportView({
   blogPhotos,
   brainTests,
   attendance,
+  token,
 }: {
   report: MaskedReport;
   photos: ParentPhoto[];
   blogPhotos: ParentPhoto[];
   brainTests: ParentBrainTest[];
   attendance: ParentAttendanceRecord[];
+  token: string;
 }) {
   return (
     <main className="min-h-screen pb-14">
@@ -107,7 +109,7 @@ export default function TemperamentReportView({
           <GuideBlock title="다음 상담에서 함께 볼 부분" items={report.centerPlan.nextCheckpoints} last />
         </section>
 
-        <FamilyAttendanceCalendar attendance={attendance} photos={photos} />
+        <FamilyAttendanceCalendar attendance={attendance} photos={photos} token={token} />
         <BrainTestSummarySection tests={brainTests} />
         <ActivityAlbumSection photos={photos} />
         <CenterNewsSection photos={blogPhotos} />

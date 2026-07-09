@@ -20,6 +20,7 @@ import MtprisReportView from "@/components/mtpris/MtprisReportView";
 interface FamilyMember {
   childId: string;
   maskedName: string;
+  token: string;
   payload: VerifyPayload;
 }
 
@@ -108,6 +109,7 @@ export default function FamilyPage() {
           blogPhotos={current.payload.blogPhotos}
           brainTests={current.payload.brainTests}
           attendance={current.payload.attendance}
+          token={current.token}
         />
       ) : (
         <TemperamentReportView
@@ -116,6 +118,7 @@ export default function FamilyPage() {
           blogPhotos={current.payload.blogPhotos}
           brainTests={current.payload.brainTests}
           attendance={current.payload.attendance}
+          token={current.token}
         />
       )}
     </main>

@@ -252,3 +252,27 @@ create index if not exists attendance_records_child_date_idx on attendance_recor
 
 alter table attendance_records enable row level security;
 grant select, insert, update, delete on attendance_records to service_role;
+
+-- =====================================================================
+-- 보강 희망일 요청 (학부모가 제출, 관리자가 승인/거절)
+-- ---------------------------------------------------------------------
+-- 학부모는 결석일을 눌러 원하는 보강 날짜를 제안만 할 수 있고, 실제
+-- attendance_records.makeup_date 반영은 관리자가 승인해야 이루어집니다.
+-- =====================================================================
+
+create table if not exists makeup_requests (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  original_class_date date,
+  requested_date date not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  parent_memo text,
+  admin_memo text,
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+create index if not exists makeup_requests_child_idx on makeup_requests(child_id);
+create index if not exists makeup_requests_status_idx on makeup_requests(status);
+
+alter table makeup_requests enable row level security;
+grant select, insert, update, delete on makeup_requests to service_role;

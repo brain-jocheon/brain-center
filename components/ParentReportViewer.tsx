@@ -119,6 +119,7 @@ export default function ParentReportViewer({ token }: { token: string }) {
         blogPhotos={result.blogPhotos}
         brainTests={result.brainTests}
         attendance={result.attendance}
+        token={token}
       />
     );
   }
@@ -130,6 +131,7 @@ export default function ParentReportViewer({ token }: { token: string }) {
       blogPhotos={result.blogPhotos}
       brainTests={result.brainTests}
       attendance={result.attendance}
+      token={token}
     />
   );
 }
