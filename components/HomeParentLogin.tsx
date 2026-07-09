@@ -3,11 +3,11 @@
 /**
  * 홈페이지에서 고유 링크 없이 "아이 이름 + 비밀번호"로 바로 결과지 확인.
  * ---------------------------------------------------------------------
- * 1. /api/report/find-token 으로 이름+비밀번호가 일치하는 토큰을 찾는다.
- * 2. 비밀번호를 다시 입력하지 않도록 sessionStorage에 잠깐 넣어두고
- *    /report/{token}으로 이동 — 그 페이지가 1회성으로 읽어 자동 로그인한다.
- * [보안] 비밀번호는 sessionStorage에 아주 잠깐(같은 탭, 페이지 이동 전까지만)
- * 머무르고, 읽히는 즉시 지워집니다.
+ * /api/report/find-family 로 이름+비밀번호가 일치하는 아이(+같은 비밀번호를 쓰는
+ * 형제자매)의 마스킹된 콘텐츠를 한 번에 받아서, sessionStorage에 1회성으로
+ * 담아 /family로 이동합니다 — 그 페이지가 즉시 읽어 소비하고 지웁니다.
+ * [보안] 비밀번호 자체는 저장하지 않고, 이미 서버에서 검증·마스킹된 결과만
+ * 아주 잠깐(같은 탭, 페이지 이동 전까지만) 머무릅니다.
  */
 
 import { useState } from "react";
@@ -23,7 +23,7 @@ export default function HomeParentLogin() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/report/find-token", {
+      const res = await fetch("/api/report/find-family", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, password }),
@@ -33,8 +33,8 @@ export default function HomeParentLogin() {
         setError(data.message || "이름 또는 비밀번호가 맞지 않습니다.");
         return;
       }
-      sessionStorage.setItem(`bc_pending_pw_${data.token}`, password);
-      window.location.href = `/report/${data.token}`;
+      sessionStorage.setItem("bc_family_result", JSON.stringify(data.children));
+      window.location.href = "/family";
     } catch {
       setError("연결에 문제가 있습니다. 잠시 후 다시 시도해 주세요.");
     } finally {

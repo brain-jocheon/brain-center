@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -282,6 +282,23 @@ export async function findActiveAccessEntriesByChildName(name: string): Promise<
   const { data: children, error: childError } = await db().from("children").select("id").eq("name", name);
   if (childError) throw childError;
   const childIds = (children ?? []).map((c: { id: string }) => c.id);
+  if (childIds.length === 0) return [];
+  return findActiveAccessEntriesByChildIds(childIds);
+}
+
+/** 같은 보호자 연락처를 쓰는 다른 아이들의 id (형제자매 후보) — 빈 연락처는 그룹핑 기준으로 쓰지 않음 */
+export async function getSiblingChildIds(guardianPhone: string | undefined, excludeChildId: string): Promise<string[]> {
+  if (!guardianPhone) return [];
+  const { data, error } = await db()
+    .from("children")
+    .select("id")
+    .eq("guardian_phone", guardianPhone)
+    .neq("id", excludeChildId);
+  if (error) throw error;
+  return (data ?? []).map((c: { id: string }) => c.id);
+}
+
+export async function findActiveAccessEntriesByChildIds(childIds: string[]): Promise<ChildLoginCandidate[]> {
   if (childIds.length === 0) return [];
 
   const [reportsRes, mtprisRes] = await Promise.all([
@@ -741,4 +758,57 @@ export async function createSignedBrainFileUrl(path: string, expiresIn = 600): P
 export async function deleteBrainFile(path: string): Promise<void> {
   const { error } = await db().storage.from(BRAIN_TEST_BUCKET).remove([path]);
   if (error) throw error;
+}
+
+/* ---------------- 출결/보강 ---------------- */
+
+const ATTENDANCE_SELECT =
+  "id, childId:child_id, classDate:class_date, status, isMakeup:is_makeup, makeupDate:makeup_date, memo, createdAt:created_at, updatedAt:updated_at";
+
+export async function getAttendanceByChild(childId: string): Promise<AttendanceRecord[]> {
+  const { data, error } = await db()
+    .from("attendance_records")
+    .select(ATTENDANCE_SELECT)
+    .eq("child_id", childId)
+    .order("class_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as AttendanceRecord[];
+}
+
+export interface AttendanceInput {
+  childId: string;
+  classDate: string;
+  status: "present" | "absent";
+  isMakeup?: boolean;
+  makeupDate?: string;
+  memo?: string;
+}
+
+/** 같은 (아이, 날짜)면 덮어씀 — 기록을 다시 저장하면 그날 상태를 바로 수정하는 셈 */
+export async function upsertAttendance(input: AttendanceInput): Promise<AttendanceRecord> {
+  const now = new Date().toISOString();
+  const row = {
+    id: `att_${randomBytes(6).toString("hex")}`,
+    child_id: input.childId,
+    class_date: input.classDate,
+    status: input.status,
+    is_makeup: !!input.isMakeup,
+    makeup_date: input.makeupDate || null,
+    memo: input.memo || null,
+    updated_at: now,
+  };
+  const { data, error } = await db()
+    .from("attendance_records")
+    .upsert(row, { onConflict: "child_id,class_date", ignoreDuplicates: false })
+    .select(ATTENDANCE_SELECT)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("출결 기록 저장 직후 조회에 실패했습니다.");
+  return data as unknown as AttendanceRecord;
+}
+
+export async function deleteAttendance(id: string): Promise<boolean> {
+  const { data, error } = await db().from("attendance_records").delete().eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }

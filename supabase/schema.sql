@@ -225,3 +225,30 @@ create index if not exists brain_tests_child_id_idx on brain_tests(child_id);
 
 alter table brain_tests enable row level security;
 grant select, insert, update, delete on brain_tests to service_role;
+
+-- =====================================================================
+-- 출결/보강 기록
+-- ---------------------------------------------------------------------
+-- 하루(child_id, class_date)당 한 행. is_makeup=true면 그 날짜 자체가
+-- 보강 수업일이라는 뜻이고, status='absent'일 때 makeup_date를 채우면
+-- "그 결석에 대해 보강이 예정된 날짜"를 의미합니다(아직 실제 보강 수업
+-- 당일 출결은 별도 행으로 기록). memo는 관리자 전용(결석 사유 등) —
+-- 학부모 화면에는 절대 내려가지 않습니다.
+-- =====================================================================
+
+create table if not exists attendance_records (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  class_date date not null,
+  status text not null check (status in ('present', 'absent')),
+  is_makeup boolean not null default false,
+  makeup_date date,
+  memo text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (child_id, class_date)
+);
+create index if not exists attendance_records_child_date_idx on attendance_records(child_id, class_date desc);
+
+alter table attendance_records enable row level security;
+grant select, insert, update, delete on attendance_records to service_role;

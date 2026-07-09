@@ -3,22 +3,25 @@
 /**
  * 서술형 기질검사 결과 표시 (기존 ParentReportViewer의 화면 부분을 그대로 분리)
  */
-import type { MaskedReport, ParentPhoto, ParentBrainTest } from "@/lib/types";
+import type { MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord } from "@/lib/types";
 import ScoreBars from "./ScoreBars";
 import ActivityAlbumSection from "./ActivityAlbumSection";
 import CenterNewsSection from "./CenterNewsSection";
 import BrainTestSummarySection from "./BrainTestSummarySection";
+import FamilyAttendanceCalendar from "./FamilyAttendanceCalendar";
 
 export default function TemperamentReportView({
   report,
   photos,
   blogPhotos,
   brainTests,
+  attendance,
 }: {
   report: MaskedReport;
   photos: ParentPhoto[];
   blogPhotos: ParentPhoto[];
   brainTests: ParentBrainTest[];
+  attendance: ParentAttendanceRecord[];
 }) {
   return (
     <main className="min-h-screen pb-14">
@@ -104,6 +107,7 @@ export default function TemperamentReportView({
           <GuideBlock title="다음 상담에서 함께 볼 부분" items={report.centerPlan.nextCheckpoints} last />
         </section>
 
+        <FamilyAttendanceCalendar attendance={attendance} photos={photos} />
         <BrainTestSummarySection tests={brainTests} />
         <ActivityAlbumSection photos={photos} />
         <CenterNewsSection photos={blogPhotos} />

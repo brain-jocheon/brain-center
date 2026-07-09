@@ -8,7 +8,7 @@ import { notFound } from "next/navigation";
 import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
-  getBrainTestsByChild, createSignedBrainFileUrl,
+  getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
@@ -17,6 +17,8 @@ import PhotoUploadForm from "@/components/admin/PhotoUploadForm";
 import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery";
 import BrainTestForm from "@/components/admin/BrainTestForm";
 import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/BrainTestList";
+import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
+import type { AttendanceRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     );
   } catch {
     // brain_tests 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
+
+  // [주의] attendance_records 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  let attendanceRecords: AttendanceRecord[] = [];
+  try {
+    attendanceRecords = await getAttendanceByChild(child.id);
+  } catch {
+    // attendance_records 테이블 마이그레이션 전 — 빈 목록으로 대체
   }
 
   const otherActiveChildren = allChildren
@@ -154,6 +164,13 @@ export default async function ChildDetail({ params }: { params: { id: string } }
             </section>
           );
         })}
+
+        <section>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <p className="section-label">출결 관리</p>
+          </div>
+          <AttendanceCalendar childId={child.id} records={attendanceRecords} />
+        </section>
 
         <section>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">

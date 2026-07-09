@@ -178,3 +178,27 @@ export interface ParentBrainTest {
   indicators: BrainIndicator[];
   opinion?: string;
 }
+
+/** 출결 기록 (관리자 전체 뷰) — 하루(아이+날짜)당 한 행 */
+export interface AttendanceRecord {
+  id: string;
+  childId: string;
+  classDate: string;
+  status: "present" | "absent";
+  /** 이 날짜 자체가 보강 수업인지 */
+  isMakeup: boolean;
+  /** status가 absent일 때, 보강이 예정된 날짜(있다면) */
+  makeupDate?: string;
+  /** [보안] 관리자 전용(결석 사유 등) — 학부모 화면에는 절대 내려가지 않음 */
+  memo?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 학부모 화면에 내려가는 출결 — memo 없음 */
+export interface ParentAttendanceRecord {
+  classDate: string;
+  status: "present" | "absent";
+  isMakeup: boolean;
+  makeupDate?: string;
+}
