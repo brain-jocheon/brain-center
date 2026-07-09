@@ -7,7 +7,7 @@ import type { Config } from "tailwindcss";
  * - 포인트: 부드러운 살구색 (따뜻함)
  */
 const config: Config = {
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {

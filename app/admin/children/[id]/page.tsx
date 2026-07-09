@@ -67,6 +67,9 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     .filter((c) => c.id !== child.id && c.status === "active")
     .map((c) => ({ id: c.id, name: c.name, grade: c.grade }));
   const childNames: Record<string, string> = Object.fromEntries(allChildren.map((c) => [c.id, c.name]));
+  const siblings = allChildren
+    .filter((c) => c.id !== child.id && c.guardianPhone && c.guardianPhone === child.guardianPhone)
+    .map((c) => ({ id: c.id, name: c.name, classDay: c.classDay }));
 
   const galleryPhotos: GalleryPhoto[] = (
     await Promise.all(
@@ -171,7 +174,12 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <p className="section-label">출결 관리</p>
           </div>
-          <AttendanceCalendar childId={child.id} records={attendanceRecords} />
+          <AttendanceCalendar
+            childId={child.id}
+            records={attendanceRecords}
+            child={{ id: child.id, name: child.name, classDay: child.classDay }}
+            siblings={siblings}
+          />
         </section>
 
         <section>

@@ -3,14 +3,35 @@
 /**
  * 관리자 출결 관리 — 달력에서 날짜를 클릭해 출석/결석/보강을 기록합니다.
  * 같은 날짜를 다시 클릭해서 저장하면 그 날짜의 기록이 덮어써집니다(upsert).
+ *
+ * "수업 요일" 자동 표시: 아직 출결 기록이 없는 날짜라도, 아이(또는 형제자매)의
+ * 등록된 수업 요일에 해당하면 아래쪽에 작은 색 점으로 표시합니다 — 실제 출결
+ * 기록이 생기면 그 표시(출석/결석 배경색)가 우선합니다.
  */
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import MonthCalendar from "../MonthCalendar";
 import type { AttendanceRecord } from "@/lib/types";
+import { parseClassDays, CHILD_DOT_COLORS } from "@/lib/classSchedule";
 
-export default function AttendanceCalendar({ childId, records }: { childId: string; records: AttendanceRecord[] }) {
+interface ScheduleChild {
+  id: string;
+  name: string;
+  classDay?: string;
+}
+
+export default function AttendanceCalendar({
+  childId,
+  records,
+  child,
+  siblings = [],
+}: {
+  childId: string;
+  records: AttendanceRecord[];
+  child: ScheduleChild;
+  siblings?: ScheduleChild[];
+}) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
@@ -22,6 +43,24 @@ export default function AttendanceCalendar({ childId, records }: { childId: stri
     for (const r of records) map.set(r.classDate, r);
     return map;
   }, [records]);
+
+  const scheduleChildren = useMemo(() => [child, ...siblings], [child, siblings]);
+
+  // 요일(0~6) → 그 요일에 수업이 있는 아이 목록(색 포함)
+  const scheduleByWeekday = useMemo(() => {
+    const map = new Map<number, { name: string; color: string }[]>();
+    scheduleChildren.forEach((c, i) => {
+      const color = CHILD_DOT_COLORS[i % CHILD_DOT_COLORS.length];
+      for (const weekday of parseClassDays(c.classDay)) {
+        const list = map.get(weekday) ?? [];
+        list.push({ name: c.name, color });
+        map.set(weekday, list);
+      }
+    });
+    return map;
+  }, [scheduleChildren]);
+
+  const hasAnySchedule = scheduleByWeekday.size > 0;
 
   function shiftMonth(delta: number) {
     let m = month + delta;
@@ -41,11 +80,13 @@ export default function AttendanceCalendar({ childId, records }: { childId: stri
         onNextMonth={() => shiftMonth(1)}
         renderDay={(dateStr, day) => {
           const rec = byDate.get(dateStr);
+          const weekday = new Date(`${dateStr}T00:00:00`).getDay();
+          const scheduled = !rec ? scheduleByWeekday.get(weekday) : undefined;
           return (
             <button
               type="button"
               onClick={() => setEditingDate(dateStr)}
-              className={`w-full aspect-square rounded-lg text-xs flex flex-col items-center justify-center gap-0.5 ${
+              className={`w-full aspect-square rounded-lg text-xs flex flex-col items-center justify-center gap-0.5 relative ${
                 rec?.status === "present"
                   ? rec.isMakeup ? "bg-sky-100 text-sky-700" : "bg-sage-100 text-sage-700"
                   : rec?.status === "absent"
@@ -56,10 +97,30 @@ export default function AttendanceCalendar({ childId, records }: { childId: stri
               <span>{day}</span>
               {rec?.status === "present" && <span className="text-[9px]">{rec.isMakeup ? "보강" : "출석"}</span>}
               {rec?.status === "absent" && <span className="text-[9px]">결석</span>}
+              {scheduled && scheduled.length > 0 && (
+                <span className="flex gap-0.5 absolute bottom-1">
+                  {scheduled.map((s, i) => (
+                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${s.color}`} />
+                  ))}
+                </span>
+              )}
             </button>
           );
         }}
       />
+
+      {hasAnySchedule && (
+        <div className="flex flex-wrap items-center gap-3 mt-3 text-[11px] text-ink/50">
+          {scheduleChildren
+            .filter((c) => parseClassDays(c.classDay).length > 0)
+            .map((c, i) => (
+              <span key={c.id} className="flex items-center gap-1">
+                <span className={`w-2.5 h-2.5 rounded-full inline-block ${CHILD_DOT_COLORS[i % CHILD_DOT_COLORS.length]}`} />
+                {c.name}{c.id === child.id ? " (이 아이)" : ""}
+              </span>
+            ))}
+        </div>
+      )}
 
       {editingDate && (
         <DayEditor
