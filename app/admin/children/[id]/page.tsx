@@ -18,6 +18,7 @@ import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery
 import BrainTestForm from "@/components/admin/BrainTestForm";
 import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/BrainTestList";
 import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
+import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
 import type { AttendanceRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -112,6 +113,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
 
       <div className="max-w-3xl mx-auto px-5 py-8 space-y-5">
         <ChildInfoPanel child={child} />
+        <FamilyGroupPanel child={child} allChildren={allChildren} />
 
         {items.length === 0 && (
           <div className="card text-center text-sm text-ink/50 py-10">

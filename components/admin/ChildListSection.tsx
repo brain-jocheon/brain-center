@@ -46,6 +46,16 @@ export default function ChildListSection({ items }: { items: ChildListItem[] }) 
   const main = showSplit ? filtered.filter((r) => r.child.status !== "ended") : filtered;
   const ended = showSplit ? filtered.filter((r) => r.child.status === "ended") : [];
 
+  // 같은 보호자 연락처를 쓰는 아이 수 (형제자매 그룹 크기) — 목록에서 바로 보이게
+  const siblingCountByPhone = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const { child } of items) {
+      if (!child.guardianPhone) continue;
+      map.set(child.guardianPhone, (map.get(child.guardianPhone) ?? 0) + 1);
+    }
+    return map;
+  }, [items]);
+
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-5">
@@ -76,7 +86,9 @@ export default function ChildListSection({ items }: { items: ChildListItem[] }) 
       )}
 
       <ul className="space-y-4">
-        {main.map((item) => <ChildCard key={item.child.id} {...item} />)}
+        {main.map((item) => (
+          <ChildCard key={item.child.id} {...item} siblingCount={siblingCountByPhone.get(item.child.guardianPhone ?? "") ?? 1} />
+        ))}
       </ul>
 
       {ended.length > 0 && (
@@ -85,7 +97,9 @@ export default function ChildListSection({ items }: { items: ChildListItem[] }) 
             종료된 아이 ({ended.length}명)
           </summary>
           <ul className="space-y-4 mt-4">
-            {ended.map((item) => <ChildCard key={item.child.id} {...item} dimmed />)}
+            {ended.map((item) => (
+              <ChildCard key={item.child.id} {...item} siblingCount={siblingCountByPhone.get(item.child.guardianPhone ?? "") ?? 1} dimmed />
+            ))}
           </ul>
         </details>
       )}
@@ -93,7 +107,7 @@ export default function ChildListSection({ items }: { items: ChildListItem[] }) 
   );
 }
 
-function ChildCard({ child, count, latest, dimmed }: ChildListItem & { dimmed?: boolean }) {
+function ChildCard({ child, count, latest, siblingCount = 1, dimmed }: ChildListItem & { siblingCount?: number; dimmed?: boolean }) {
   return (
     <li>
       <Link href={`/admin/children/${child.id}`} className={`card block hover:border-sage-400 transition-colors ${dimmed ? "opacity-60" : ""}`}>
@@ -104,6 +118,11 @@ function ChildCard({ child, count, latest, dimmed }: ChildListItem & { dimmed?: 
               <span className="text-[10px] bg-sage-100 text-sage-700 rounded-full px-2 py-0.5 font-medium shrink-0">
                 {STATUS_LABEL[child.status]}
               </span>
+              {siblingCount > 1 && (
+                <span className="text-[10px] bg-sky-100 text-sky-700 rounded-full px-2 py-0.5 font-medium shrink-0">
+                  형제자매 {siblingCount}명
+                </span>
+              )}
             </div>
             <p className="text-sm text-ink/60 mt-0.5">
               {child.grade} · 검사 {count}건
