@@ -15,6 +15,7 @@ export default function SiteSettingsForm({ settings }: { settings: SiteSettings 
     aboutText: settings.aboutText,
     address: settings.address ?? "",
     phone: settings.phone ?? "",
+    kakaoUrl: settings.kakaoUrl ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -59,6 +60,10 @@ export default function SiteSettingsForm({ settings }: { settings: SiteSettings 
             <dt className="text-xs text-ink/40">연락처</dt>
             <dd className="mt-0.5">{settings.phone || <span className="text-ink/30">아직 입력 안 함</span>}</dd>
           </div>
+          <div>
+            <dt className="text-xs text-ink/40">카카오톡 채널</dt>
+            <dd className="mt-0.5 truncate">{settings.kakaoUrl || <span className="text-ink/30">아직 입력 안 함</span>}</dd>
+          </div>
         </dl>
       </section>
     );
@@ -93,6 +98,18 @@ export default function SiteSettingsForm({ settings }: { settings: SiteSettings 
             onChange={(e) => update({ phone: e.target.value })}
             placeholder="예: 064-000-0000"
           />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="block text-sm font-medium mb-1.5">카카오톡 채널 URL</span>
+          <input
+            className="input"
+            value={form.kakaoUrl}
+            onChange={(e) => update({ kakaoUrl: e.target.value })}
+            placeholder="예: https://pf.kakao.com/_xxxxxxx"
+          />
+          <span className="block text-xs text-ink/40 mt-1.5">
+            비워두면 홈페이지 "카카오톡 문의하기" 버튼은 전화 연결로 대신 안내됩니다.
+          </span>
         </label>
       </div>
 

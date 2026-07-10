@@ -276,3 +276,10 @@ create index if not exists makeup_requests_status_idx on makeup_requests(status)
 
 alter table makeup_requests enable row level security;
 grant select, insert, update, delete on makeup_requests to service_role;
+
+-- =====================================================================
+-- 홈페이지 "카카오톡 문의하기" 버튼 — 실제 카카오톡 채널 URL
+-- ---------------------------------------------------------------------
+-- 예: https://pf.kakao.com/_xxxxxxx  (미입력 시 버튼은 전화 연결로 대체됨)
+-- =====================================================================
+alter table site_settings add column if not exists kakao_url text;

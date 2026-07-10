@@ -11,7 +11,7 @@ export async function PATCH(req: Request) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { aboutText?: string; address?: string; phone?: string }
+    | { aboutText?: string; address?: string; phone?: string; kakaoUrl?: string }
     | null;
 
   if (!body) {
@@ -22,6 +22,7 @@ export async function PATCH(req: Request) {
     aboutText: body.aboutText?.trim(),
     address: body.address?.trim(),
     phone: body.phone?.trim(),
+    kakaoUrl: body.kakaoUrl?.trim(),
   });
 
   return NextResponse.json({ ok: true });

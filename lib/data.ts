@@ -587,7 +587,7 @@ export async function deletePhotoFile(path: string): Promise<void> {
 export const DEFAULT_ABOUT_TEXT =
   "학습심리브레인센터는 아동·청소년의 기질, 정서, 학습, 뇌기능을 종합적으로 이해하고 맞춤형 성장을 지원하는 전문 교육·상담 센터입니다.\n\n검사와 상담, 뉴로피드백 훈련, 정서·자존감 프로그램을 통해 아이의 강점을 발견하고 안정적인 학습과 생활 성장을 돕습니다.";
 
-const SITE_SETTINGS_SELECT = "aboutText:about_text, address, phone, updatedAt:updated_at";
+const SITE_SETTINGS_SELECT = "aboutText:about_text, address, phone, kakaoUrl:kakao_url, updatedAt:updated_at";
 
 export async function getSiteSettings(): Promise<SiteSettings> {
   const { data, error } = await db().from("site_settings").select(SITE_SETTINGS_SELECT).eq("id", "default").maybeSingle();
@@ -597,15 +597,17 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     aboutText: row?.aboutText || DEFAULT_ABOUT_TEXT,
     address: row?.address || undefined,
     phone: row?.phone || undefined,
+    kakaoUrl: row?.kakaoUrl || undefined,
     updatedAt: row?.updatedAt || "",
   };
 }
 
-export async function updateSiteSettings(patch: { aboutText?: string; address?: string; phone?: string }): Promise<void> {
+export async function updateSiteSettings(patch: { aboutText?: string; address?: string; phone?: string; kakaoUrl?: string }): Promise<void> {
   const row: Record<string, unknown> = { id: "default", updated_at: new Date().toISOString() };
   if (patch.aboutText !== undefined) row.about_text = patch.aboutText || null;
   if (patch.address !== undefined) row.address = patch.address || null;
   if (patch.phone !== undefined) row.phone = patch.phone || null;
+  if (patch.kakaoUrl !== undefined) row.kakao_url = patch.kakaoUrl || null;
   const { error } = await db().from("site_settings").upsert(row, { onConflict: "id" });
   if (error) throw error;
 }

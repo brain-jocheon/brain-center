@@ -3,14 +3,26 @@
  * 특정 아이와 무관하게, 로그인 없이 보이는 공개 홈페이지(app/page.tsx)의 내용을 편집합니다.
  */
 import Link from "next/link";
-import { getSiteSettings, getNotices } from "@/lib/data";
+import { getSiteSettings, getNotices, DEFAULT_ABOUT_TEXT } from "@/lib/data";
+import type { SiteSettings, Notice } from "@/lib/types";
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import NoticeManager from "@/components/admin/NoticeManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function SiteAdminPage() {
-  const [settings, notices] = await Promise.all([getSiteSettings(), getNotices()]);
+  let settings: SiteSettings = { aboutText: DEFAULT_ABOUT_TEXT, updatedAt: "" };
+  let notices: Notice[] = [];
+  try {
+    settings = await getSiteSettings();
+  } catch {
+    // kakao_url 등 신규 컬럼 마이그레이션 전 — 기본값으로 대체
+  }
+  try {
+    notices = await getNotices();
+  } catch {
+    // notices 테이블 마이그레이션 전 — 공지 없음으로 대체
+  }
 
   return (
     <main className="min-h-screen">

@@ -138,6 +138,8 @@ export interface SiteSettings {
   aboutText: string;
   address?: string;
   phone?: string;
+  /** 카카오톡 채널 URL (예: https://pf.kakao.com/_xxxxxxx) — 미입력 시 문의 버튼은 전화 연결로 대체됨 */
+  kakaoUrl?: string;
   updatedAt: string;
 }
 

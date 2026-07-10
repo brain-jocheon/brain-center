@@ -164,6 +164,7 @@ export default async function Home() {
 
   const phoneDigits = settings.phone ? settings.phone.replace(/[^0-9+]/g, "") : "";
   const contactHref = phoneDigits ? `tel:${phoneDigits}` : "#contact";
+  const kakaoHref = settings.kakaoUrl || contactHref;
 
   return (
     <main className="min-h-screen">
@@ -481,7 +482,9 @@ export default async function Home() {
                 전화 상담하기
               </a>
               <a
-                href={contactHref}
+                href={kakaoHref}
+                target={settings.kakaoUrl ? "_blank" : undefined}
+                rel={settings.kakaoUrl ? "noopener noreferrer" : undefined}
                 className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
               >
                 카카오톡 문의하기
