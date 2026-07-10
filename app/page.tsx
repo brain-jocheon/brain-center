@@ -3,6 +3,7 @@ import { getSiteSettings, getNotices, DEFAULT_ABOUT_TEXT } from "@/lib/data";
 import type { SiteSettings, Notice } from "@/lib/types";
 import HomeParentLogin from "@/components/HomeParentLogin";
 import FaqAccordion from "@/components/home/FaqAccordion";
+import ContactButton from "@/components/home/ContactButton";
 
 /**
  * 첫 화면 (상담 문의 전환 중심 홈페이지)
@@ -164,7 +165,6 @@ export default async function Home() {
 
   const phoneDigits = settings.phone ? settings.phone.replace(/[^0-9+]/g, "") : "";
   const contactHref = phoneDigits ? `tel:${phoneDigits}` : "#contact";
-  const kakaoHref = settings.kakaoUrl || contactHref;
 
   return (
     <main className="min-h-screen">
@@ -183,9 +183,12 @@ export default async function Home() {
             <Link href="/admin" className="hidden sm:inline text-xs text-sage-400 underline underline-offset-4">
               센터 관리자 입장
             </Link>
-            <a href={contactHref} className="btn-primary !px-4 !py-2 text-sm">
-              상담 문의
-            </a>
+            <ContactButton
+              phoneHref={contactHref}
+              kakaoUrl={settings.kakaoUrl}
+              label="상담 문의"
+              className="btn-primary !px-4 !py-2 text-sm"
+            />
           </div>
         </div>
       </header>
@@ -204,9 +207,12 @@ export default async function Home() {
             프로그램을 통해 우리 아이에게 맞는 성장 방향을 함께 찾아갑니다.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
-            <a href={contactHref} className="btn-primary !bg-white !text-sage-800 hover:!bg-sage-50">
-              우리 아이 상담 문의하기
-            </a>
+            <ContactButton
+              phoneHref={contactHref}
+              kakaoUrl={settings.kakaoUrl}
+              label="우리 아이 상담 문의하기"
+              className="btn-primary !bg-white !text-sage-800 hover:!bg-sage-50"
+            />
             <a
               href="#programs"
               className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
@@ -235,7 +241,7 @@ export default async function Home() {
             </ul>
             <div className="text-center">
               <p className="text-sm text-ink/60 mb-4">하나라도 해당된다면, 편하게 상담부터 받아보세요.</p>
-              <a href={contactHref} className="btn-primary">상담 문의하기</a>
+              <ContactButton phoneHref={contactHref} kakaoUrl={settings.kakaoUrl} label="상담 문의하기" className="btn-primary" />
             </div>
           </div>
         </section>
@@ -307,9 +313,12 @@ export default async function Home() {
                     <dd className="text-ink/70 leading-relaxed">{p.result}</dd>
                   </div>
                 </dl>
-                <a href={contactHref} className="btn-ghost !py-2 text-sm w-full">
-                  이 프로그램 문의하기
-                </a>
+                <ContactButton
+                  phoneHref={contactHref}
+                  kakaoUrl={settings.kakaoUrl}
+                  label="이 프로그램 문의하기"
+                  className="btn-ghost !py-2 text-sm w-full"
+                />
               </div>
             ))}
           </div>
@@ -335,7 +344,7 @@ export default async function Home() {
             ))}
           </div>
           <div className="text-center mt-8">
-            <a href={contactHref} className="btn-primary">상담 문의하기</a>
+            <ContactButton phoneHref={contactHref} kakaoUrl={settings.kakaoUrl} label="상담 문의하기" className="btn-primary" />
           </div>
         </section>
 
@@ -473,28 +482,24 @@ export default async function Home() {
             )}
             <div className="flex flex-wrap items-center justify-center gap-2.5">
               <a href={contactHref} className="btn-primary !bg-white !text-sage-800 hover:!bg-sage-50">
-                상담 문의하기
+                전화로 상담하기
               </a>
-              <a
-                href={contactHref}
+              {settings.kakaoUrl && (
+                <a
+                  href={settings.kakaoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
+                >
+                  카카오톡으로 상담하기
+                </a>
+              )}
+              <ContactButton
+                phoneHref={contactHref}
+                kakaoUrl={settings.kakaoUrl}
+                label="무료체험·초기상담 신청하기"
                 className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
-              >
-                전화 상담하기
-              </a>
-              <a
-                href={kakaoHref}
-                target={settings.kakaoUrl ? "_blank" : undefined}
-                rel={settings.kakaoUrl ? "noopener noreferrer" : undefined}
-                className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
-              >
-                카카오톡 문의하기
-              </a>
-              <a
-                href={contactHref}
-                className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
-              >
-                무료체험·초기상담 신청하기
-              </a>
+              />
             </div>
           </div>
         </section>
