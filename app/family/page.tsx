@@ -13,19 +13,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { VerifyPayload } from "@/lib/reportPayload";
+import type { FamilyMember } from "@/lib/reportPayload";
 import ParentDashboard from "@/components/parent/ParentDashboard";
-
-interface FamilyMember {
-  childId: string;
-  maskedName: string;
-  token: string;
-  payload: VerifyPayload;
-}
 
 export default function FamilyPage() {
   const [members, setMembers] = useState<FamilyMember[] | null>(null);
-  const [selected, setSelected] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   // [주의] React 18 개발 모드 Strict Mode는 effect를 일부러 두 번 실행합니다.
   // sessionStorage는 한 번 읽으면 지우는 "1회성 소비" 데이터라, 가드 없이 두 번
@@ -75,30 +67,9 @@ export default function FamilyPage() {
     return <main className="min-h-screen flex items-center justify-center text-sm text-ink/40">불러오는 중...</main>;
   }
 
-  const current = members[selected];
-
   return (
-    <main className="min-h-screen pb-14">
-      {members.length > 1 && (
-        <div className="bg-sage-700 sticky top-0 z-20">
-          <div className="max-w-md mx-auto px-5 py-3 flex items-center gap-2 overflow-x-auto">
-            {members.map((m, i) => (
-              <button
-                key={m.childId}
-                onClick={() => setSelected(i)}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  i === selected ? "bg-white text-sage-700" : "bg-white/10 text-white"
-                }`}
-              >
-                {m.maskedName}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* key=childId: 형제자매 전환 시 대시보드 탭/문의 상태를 새로 시작하도록 강제 리마운트 */}
-      <ParentDashboard key={current.childId} payload={current.payload} token={current.token} />
+    <main className="min-h-screen">
+      <ParentDashboard members={members} />
     </main>
   );
 }

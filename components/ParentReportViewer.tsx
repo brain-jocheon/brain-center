@@ -2,27 +2,30 @@
 
 /**
  * =====================================================================
- * 학부모 결과지 진입점 (비밀번호 게이트 + 종류별 화면 분기)
+ * 학부모 결과지 진입점 (비밀번호 게이트 + 마이페이지 대시보드)
  * ---------------------------------------------------------------------
- * 흐름: 비밀번호 입력 → 서버 검증(/api/report/verify) → 결과 종류에 따라
- *       TemperamentReportView 또는 MtprisReportView 표시
+ * 흐름: 비밀번호 입력 → 서버 검증(/api/report/verify) → 마이페이지 대시보드
+ * 표시. 검증 직후 같은 token+password로 /api/report/siblings를 한 번 더
+ * 불러 형제자매를 찾고(있으면), 있으면 대시보드 상단에 아이 전환 바가
+ * 뜹니다 — /family(이름+비밀번호 로그인)로 들어오지 않아도 개별 링크
+ * 하나만으로 형제자매를 오갈 수 있게 하기 위함입니다.
  *
  * [보안]
- * - 비밀번호 검증, 이름 마스킹, 상담사 전용 정보 제거는 모두 서버에서 처리됩니다.
- * - 비밀번호를 localStorage 등에 저장하지 않습니다.
+ * - 비밀번호 검증, 이름 마스킹 해제 여부, 상담사 전용 정보 제거는 모두
+ *   서버에서 처리됩니다.
+ * - 비밀번호를 localStorage 등에 저장하지 않습니다 (siblings 조회에 쓰는
+ *   동안만 컴포넌트 메모리에 머무름).
  * - 학부모 화면에는 인쇄 기능을 제공하지 않습니다.
  * =====================================================================
  */
 
 import { useState, useEffect, useCallback } from "react";
-import type { VerifyPayload } from "@/lib/reportPayload";
+import type { VerifyPayload, FamilyMember } from "@/lib/reportPayload";
 import ParentDashboard from "./parent/ParentDashboard";
-
-type VerifyResponse = VerifyPayload;
 
 export default function ParentReportViewer({ token }: { token: string }) {
   const [password, setPassword] = useState("");
-  const [result, setResult] = useState<VerifyResponse | null>(null);
+  const [members, setMembers] = useState<FamilyMember[] | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -41,8 +44,23 @@ export default function ParentReportViewer({ token }: { token: string }) {
           setError(data.message || "비밀번호가 맞지 않습니다. 다시 확인해 주세요.");
           return;
         }
-        const data = (await res.json()) as VerifyResponse;
-        setResult(data);
+        const payload = (await res.json()) as VerifyPayload;
+        const maskedName = payload.kind === "mtpris" ? payload.childMaskedName : payload.report.childMaskedName;
+        setMembers([{ maskedName, token, payload }]);
+
+        // 형제자매 조회는 부가 기능이라 실패해도 마이페이지 자체 이용에는 지장 없게 조용히 무시
+        fetch("/api/report/siblings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, password: pw }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: { siblings?: FamilyMember[] } | null) => {
+            if (data?.siblings?.length) {
+              setMembers((prev) => (prev ? [prev[0], ...data.siblings!] : prev));
+            }
+          })
+          .catch(() => {});
       } catch {
         setError("연결에 문제가 있습니다. 잠시 후 다시 시도해 주세요.");
       } finally {
@@ -71,7 +89,7 @@ export default function ParentReportViewer({ token }: { token: string }) {
   }
 
   /* ---------- 1단계: 비밀번호 입력 ---------- */
-  if (!result) {
+  if (!members) {
     return (
       <main className="min-h-screen flex items-center justify-center px-6">
         <div className="card max-w-sm w-full py-9 text-center">
@@ -108,7 +126,7 @@ export default function ParentReportViewer({ token }: { token: string }) {
   /* ---------- 2단계: 학부모 마이페이지 대시보드 ---------- */
   return (
     <main className="min-h-screen">
-      <ParentDashboard payload={result} token={token} />
+      <ParentDashboard members={members} />
     </main>
   );
 }

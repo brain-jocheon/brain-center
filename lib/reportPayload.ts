@@ -13,7 +13,6 @@ import {
   getPhotosByChild, getBlogPhotos, createSignedPhotoUrl, getBrainTestsByChild, getAttendanceByChild,
   getParentFeedback,
 } from "@/lib/data";
-import { maskName } from "@/lib/auth";
 import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord, ParentFeedback, AccessToken } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent, type ParentMtprisContent } from "@/lib/mtpris/mask";
@@ -51,6 +50,15 @@ export type VerifyPayload = ParentChildMeta &
         feedback: ParentFeedback[];
       }
   );
+
+/** 학부모 마이페이지의 아이 전환용 — /family(이름+비밀번호)와 /report/[token]
+ * (개별 링크, /api/report/siblings로 형제자매를 추가 조회) 양쪽에서 공용으로 씀.
+ * childId는 클라이언트에 내려줄 필요가 없어 의도적으로 뺐고, token을 고유 키로 씀. */
+export interface FamilyMember {
+  maskedName: string;
+  token: string;
+  payload: VerifyPayload;
+}
 
 /** memo(관리자 전용) 제거 + storage_path를 단기 서명 URL로 변환 */
 async function toParentPhotos(photos: ActivityPhoto[]): Promise<ParentPhoto[]> {
@@ -153,7 +161,9 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     return {
       kind: "mtpris",
       content: parentContent,
-      childMaskedName: maskName(child?.name ?? ""),
+      // childMaskedName은 이제 마스킹 없이 실명을 그대로 담습니다 — 학부모 본인의
+      // 화면이라 자기 아이 이름을 가릴 이유가 없다는 운영 판단(2026-07-11)에 따름.
+      childMaskedName: child?.name ?? "",
       childGrade: child?.grade ?? "",
       testDate: raw.testDate,
       counselor: raw.counselor,
@@ -179,11 +189,12 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     getParentFeedbackList(report.childId),
   ]);
 
-  // [보안] 실명 제거 + 마스킹된 이름만 포함하여 응답
+  // childId는 여전히 제거(클라이언트가 다른 아이 자료를 유추할 단서를 안 남김),
+  // 이름은 마스킹하지 않고 그대로 전달 — 학부모 본인 화면이라 실명 표시가 자연스러움.
   const { childId, ...rest } = report;
   const masked: MaskedReport = {
     ...rest,
-    childMaskedName: maskName(child?.name ?? ""),
+    childMaskedName: child?.name ?? "",
     childGrade: child?.grade ?? "",
   };
 

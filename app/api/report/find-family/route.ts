@@ -20,7 +20,7 @@ import {
   getSiblingChildIds, getChild, logAccess, countRecentFailedAttempts,
   type ChildLoginCandidate,
 } from "@/lib/data";
-import { verifyParentPassword, maskName } from "@/lib/auth";
+import { verifyParentPassword } from "@/lib/auth";
 import { buildParentReportPayload } from "@/lib/reportPayload";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" };
@@ -99,11 +99,11 @@ export async function POST(req: Request) {
           active: true,
         });
         if (!payload) return null;
-        return { childId: w.childId, maskedName: maskName(child?.name ?? ""), token: w.token, payload };
+        return { maskedName: child?.name ?? "", token: w.token, payload };
       })
     )
   ).filter(
-    (c): c is { childId: string; maskedName: string; token: string; payload: NonNullable<Awaited<ReturnType<typeof buildParentReportPayload>>> } =>
+    (c): c is { maskedName: string; token: string; payload: NonNullable<Awaited<ReturnType<typeof buildParentReportPayload>>> } =>
       c !== null
   );
 

@@ -11,11 +11,15 @@
  * 화면 자체는 새로 만들지 않고, 기존 섹션 컴포넌트(FamilyAttendanceCalendar,
  * ActivityAlbumSection, BrainTestSummarySection, TemperamentReportView,
  * MtprisReportView)를 탭 콘텐츠로 그대로 재사용합니다.
+ *
+ * [형제자매 전환] members가 2명 이상이면 상단에 아이 전환 바를 띄우고,
+ * 전환해도 tab 상태를 그대로 유지합니다 — 예를 들어 "출결 확인"을 보다가
+ * 다른 아이로 바꾸면 그 아이의 홈이 아니라 "출결 확인"으로 바로 들어갑니다.
  * =====================================================================
  */
 
-import { useState } from "react";
-import type { VerifyPayload } from "@/lib/reportPayload";
+import { useEffect, useState } from "react";
+import type { FamilyMember } from "@/lib/reportPayload";
 import type { ParentFeedback } from "@/lib/types";
 import { parseClassDays } from "@/lib/classSchedule";
 import FamilyAttendanceCalendar from "../FamilyAttendanceCalendar";
@@ -46,9 +50,21 @@ function nextClassDateLabel(classDay?: string): string | null {
   return null;
 }
 
-export default function ParentDashboard({ payload, token }: { payload: VerifyPayload; token: string }) {
+export default function ParentDashboard({ members }: { members: FamilyMember[] }) {
+  const [selected, setSelected] = useState(0);
   const [tab, setTab] = useState<TabKey>("home");
-  const [feedback, setFeedback] = useState<ParentFeedback[]>(payload.feedback);
+  const current = members[selected] ?? members[0];
+  const [feedback, setFeedback] = useState<ParentFeedback[]>(current.payload.feedback);
+
+  // 아이를 전환하면(홈으로 안 돌아가고) 그 아이의 문의 내역으로만 목록을 새로 채움 —
+  // tab은 일부러 그대로 둡니다(출결 보다가 전환해도 계속 출결을 보여줌).
+  useEffect(() => {
+    setFeedback(current.payload.feedback);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  const payload = current.payload;
+  const token = current.token;
 
   const isMtpris = payload.kind === "mtpris";
   const maskedName = isMtpris ? payload.childMaskedName : payload.report.childMaskedName;
@@ -83,9 +99,28 @@ export default function ParentDashboard({ payload, token }: { payload: VerifyPay
     feedback: "문의·건의사항",
   };
 
+  const siblingBar = members.length > 1 && (
+    <div className="bg-sage-800 sticky top-0 z-30">
+      <div className="max-w-md mx-auto px-5 py-2.5 flex items-center gap-2 overflow-x-auto">
+        {members.map((m, i) => (
+          <button
+            key={m.token}
+            onClick={() => setSelected(i)}
+            className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              i === selected ? "bg-white text-sage-800" : "bg-white/10 text-white"
+            }`}
+          >
+            {m.maskedName}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   if (tab === "home") {
     return (
       <div className="pb-14">
+        {siblingBar}
         <header className="bg-sage-700 text-white px-6 pt-10 pb-12 rounded-b-[2rem]">
           <div className="max-w-md mx-auto">
             <p className="text-xs tracking-widest opacity-80 mb-2">학습심리브레인센터</p>
@@ -136,8 +171,7 @@ export default function ParentDashboard({ payload, token }: { payload: VerifyPay
 
   return (
     <div className="pb-14">
-      {/* [주의] sticky로 두지 않음 — /family(형제자매) 화면에서는 이 위에 이미
-          sticky 탭 바가 있어서, 둘 다 sticky top-0이면 스크롤 시 서로 겹칩니다. */}
+      {siblingBar}
       <div className="bg-sage-700 text-white px-5 py-3.5 flex items-center gap-3">
         <button onClick={() => setTab("home")} className="text-sm font-medium opacity-90 hover:opacity-100">
           ‹ 마이페이지
