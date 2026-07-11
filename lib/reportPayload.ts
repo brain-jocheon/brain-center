@@ -60,11 +60,19 @@ export interface FamilyMember {
   payload: VerifyPayload;
 }
 
-/** memo(관리자 전용) 제거 + storage_path를 단기 서명 URL로 변환 */
+/** memo(관리자 전용) 제거 + storage_path를 단기 서명 URL로 변환.
+ * [주의] 실제 파일이 스토리지에서 지워졌거나 경로가 잘못된 사진 한 장 때문에
+ * createSignedUrl이 에러를 던지면(Object not found 등) 그 사진만 조용히
+ * 건너뛰고, 리포트 전체 열람이 500으로 죽지 않게 합니다. */
 async function toParentPhotos(photos: ActivityPhoto[]): Promise<ParentPhoto[]> {
   const withUrls = await Promise.all(
     photos.map(async (p) => {
-      const url = await createSignedPhotoUrl(p.storagePath, PHOTO_SIGNED_URL_TTL);
+      let url: string | null;
+      try {
+        url = await createSignedPhotoUrl(p.storagePath, PHOTO_SIGNED_URL_TTL);
+      } catch {
+        return null;
+      }
       if (!url) return null;
       const photo: ParentPhoto = {
         id: p.id,

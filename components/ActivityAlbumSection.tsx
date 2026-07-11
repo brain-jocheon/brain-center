@@ -14,9 +14,15 @@ const ACTIVITY_TYPE_LABEL: Record<string, string> = {
 
 export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[] }) {
   const [selected, setSelected] = useState<ParentPhoto | null>(null);
+  const [commentExpanded, setCommentExpanded] = useState(false);
   if (photos.length === 0) return null;
 
   const groups = groupByActivity(photos);
+
+  function openPhoto(p: ParentPhoto) {
+    setSelected(p);
+    setCommentExpanded(false);
+  }
 
   return (
     <section className="card">
@@ -35,7 +41,7 @@ export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[]
             </p>
             <div className="grid grid-cols-3 gap-2">
               {g.photos.map((p) => (
-                <button key={p.id} onClick={() => setSelected(p)} className="aspect-square rounded-lg overflow-hidden">
+                <button key={p.id} onClick={() => openPhoto(p)} className="aspect-square rounded-lg overflow-hidden">
                   <img src={p.url} alt={p.activityName} className="w-full h-full object-cover" />
                 </button>
               ))}
@@ -49,12 +55,26 @@ export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[]
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setSelected(null)}
         >
-          <div className="max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="max-w-lg w-full max-h-[85vh] overflow-y-auto rounded-lg" onClick={(e) => e.stopPropagation()}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={selected.url} alt={selected.activityName} className="w-full rounded-t-lg" />
+            <img src={selected.url} alt={selected.activityName} className="w-full" />
             <div className="bg-white rounded-b-lg p-4">
               <p className="font-semibold text-sm">{selected.activityDate} · {selected.activityName}</p>
-              {selected.description && <p className="text-sm text-ink/70 mt-1 leading-relaxed">{selected.description}</p>}
+              {selected.description && (
+                <>
+                  <p
+                    className={`mt-1.5 text-ink/70 leading-relaxed cursor-pointer transition-all ${
+                      commentExpanded ? "text-lg" : "text-sm"
+                    }`}
+                    onClick={() => setCommentExpanded((v) => !v)}
+                  >
+                    {selected.description}
+                  </p>
+                  <p className="text-[11px] text-sage-500 mt-1">
+                    {commentExpanded ? "눌러서 작게 보기" : "눌러서 크게 보기"}
+                  </p>
+                </>
+              )}
               <button className="btn-ghost text-xs mt-3" onClick={() => setSelected(null)}>닫기</button>
             </div>
           </div>
