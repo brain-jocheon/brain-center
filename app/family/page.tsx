@@ -14,8 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { VerifyPayload } from "@/lib/reportPayload";
-import TemperamentReportView from "@/components/TemperamentReportView";
-import MtprisReportView from "@/components/mtpris/MtprisReportView";
+import ParentDashboard from "@/components/parent/ParentDashboard";
 
 interface FamilyMember {
   childId: string;
@@ -98,29 +97,8 @@ export default function FamilyPage() {
         </div>
       )}
 
-      {current.payload.kind === "mtpris" ? (
-        <MtprisReportView
-          content={current.payload.content}
-          childMaskedName={current.payload.childMaskedName}
-          childGrade={current.payload.childGrade}
-          testDate={current.payload.testDate}
-          counselor={current.payload.counselor}
-          photos={current.payload.photos}
-          blogPhotos={current.payload.blogPhotos}
-          brainTests={current.payload.brainTests}
-          attendance={current.payload.attendance}
-          token={current.token}
-        />
-      ) : (
-        <TemperamentReportView
-          report={current.payload.report}
-          photos={current.payload.photos}
-          blogPhotos={current.payload.blogPhotos}
-          brainTests={current.payload.brainTests}
-          attendance={current.payload.attendance}
-          token={current.token}
-        />
-      )}
+      {/* key=childId: 형제자매 전환 시 대시보드 탭/문의 상태를 새로 시작하도록 강제 리마운트 */}
+      <ParentDashboard key={current.childId} payload={current.payload} token={current.token} />
     </main>
   );
 }

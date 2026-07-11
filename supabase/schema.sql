@@ -283,3 +283,27 @@ grant select, insert, update, delete on makeup_requests to service_role;
 -- 예: https://pf.kakao.com/_xxxxxxx  (미입력 시 버튼은 전화 연결로 대체됨)
 -- =====================================================================
 alter table site_settings add column if not exists kakao_url text;
+
+-- =====================================================================
+-- 학부모 마이페이지: 문의/건의사항
+-- ---------------------------------------------------------------------
+-- 학부모가 "문의/건의사항" 카드에서 남기는 글. child_id는 학부모가 직접
+-- 보내는 게 아니라 서버가 이미 검증된 access 토큰으로부터 확인합니다
+-- (다른 아이 이름으로 문의를 남길 수 없음 — makeup_requests와 동일한 패턴).
+-- =====================================================================
+create table if not exists parent_feedback (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  type text not null default 'other' check (type in ('class','makeup','share','suggestion','other')),
+  title text not null,
+  content text not null,
+  status text not null default 'pending' check (status in ('pending','reviewed','answered')),
+  admin_reply text,
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+create index if not exists parent_feedback_child_idx on parent_feedback(child_id);
+create index if not exists parent_feedback_status_idx on parent_feedback(status);
+
+alter table parent_feedback enable row level security;
+grant select, insert, update, delete on parent_feedback to service_role;

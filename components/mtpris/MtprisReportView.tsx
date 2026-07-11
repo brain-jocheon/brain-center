@@ -1,23 +1,20 @@
 "use client";
 
 /**
- * MT-PRIS 학부모 모바일 리포트
+ * MT-PRIS 학부모 모바일 리포트 (마이페이지 대시보드의 "결과지 확인" 탭 내용)
  * ---------------------------------------------------------------------
  * [설계 원칙] 핵심 요약 + 가정 지도법 중심 (조건 2번)
  * - 원자료(MAIN_RAW)와 다짐 문장은 이 화면에 절대 포함하지 않습니다.
  *   (서버가 counselorAppendix를 이미 제거한 데이터만 내려줍니다)
  * - 인쇄용 전체 해석은 관리자 인쇄 화면에서 확인합니다.
+ * [주의] 출결·사진·검사파일 등은 여기서 렌더링하지 않습니다 — 그 섹션들은
+ * components/parent/ParentDashboard.tsx가 별도 탭으로 구성합니다.
  */
 import { useState } from "react";
 import type { ParentMtprisContent } from "@/lib/mtpris/mask";
-import type { ParentPhoto, ParentBrainTest, ParentAttendanceRecord } from "@/lib/types";
 import type { MainCode } from "@/lib/content/mtpris/types";
 import QuadrantChart from "./QuadrantChart";
 import SimpleTraitView from "./SimpleTraitView";
-import ActivityAlbumSection from "../ActivityAlbumSection";
-import CenterNewsSection from "../CenterNewsSection";
-import BrainTestSummarySection from "../BrainTestSummarySection";
-import FamilyAttendanceCalendar from "../FamilyAttendanceCalendar";
 
 export default function MtprisReportView({
   content,
@@ -25,29 +22,19 @@ export default function MtprisReportView({
   childGrade,
   testDate,
   counselor,
-  photos,
-  blogPhotos,
-  brainTests,
-  attendance,
-  token,
 }: {
   content: ParentMtprisContent;
   childMaskedName: string;
   childGrade: string;
   testDate: string;
   counselor: string;
-  photos: ParentPhoto[];
-  blogPhotos: ParentPhoto[];
-  brainTests: ParentBrainTest[];
-  attendance: ParentAttendanceRecord[];
-  token: string;
 }) {
   const { summary, scoreRows, comparison, trait, rest, talents, learning, career, closingQuote, memo } = content;
   const [mode, setMode] = useState<"detailed" | "simple">("detailed");
   const mainCode = summary.mainName.slice(0, 2) as MainCode;
 
   return (
-    <main className="min-h-screen pb-14">
+    <div className="pb-14">
       <header className="bg-sage-700 text-white px-6 pt-10 pb-14 rounded-b-[2rem]">
         <div className="max-w-md mx-auto">
           <p className="text-xs tracking-widest opacity-80 mb-2">학습심리브레인센터</p>
@@ -233,20 +220,14 @@ export default function MtprisReportView({
           </>
         )}
 
-        <FamilyAttendanceCalendar attendance={attendance} photos={photos} token={token} />
-        <BrainTestSummarySection tests={brainTests} />
-        <ActivityAlbumSection photos={photos} />
-        <CenterNewsSection photos={blogPhotos} />
-
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           <p className="mb-3">{closingQuote}</p>
           본 결과지는 보호자 상담 및 가정 지도 참고용이며,
           <br />
           외부 공유를 삼가 주세요.
-          <p className="mt-3">ⓒ 학습심리브레인센터</p>
         </footer>
       </div>
-    </main>
+    </div>
   );
 }
 

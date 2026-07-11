@@ -1,32 +1,16 @@
 "use client";
 
 /**
- * 서술형 기질검사 결과 표시 (기존 ParentReportViewer의 화면 부분을 그대로 분리)
+ * 서술형 기질검사 결과 표시 (마이페이지 대시보드의 "결과지 확인" 탭 내용)
+ * [주의] 출결·사진·검사파일 등은 여기서 렌더링하지 않습니다 — 그 섹션들은
+ * components/parent/ParentDashboard.tsx가 별도 탭으로 구성합니다.
  */
-import type { MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord } from "@/lib/types";
+import type { MaskedReport } from "@/lib/types";
 import ScoreBars from "./ScoreBars";
-import ActivityAlbumSection from "./ActivityAlbumSection";
-import CenterNewsSection from "./CenterNewsSection";
-import BrainTestSummarySection from "./BrainTestSummarySection";
-import FamilyAttendanceCalendar from "./FamilyAttendanceCalendar";
 
-export default function TemperamentReportView({
-  report,
-  photos,
-  blogPhotos,
-  brainTests,
-  attendance,
-  token,
-}: {
-  report: MaskedReport;
-  photos: ParentPhoto[];
-  blogPhotos: ParentPhoto[];
-  brainTests: ParentBrainTest[];
-  attendance: ParentAttendanceRecord[];
-  token: string;
-}) {
+export default function TemperamentReportView({ report }: { report: MaskedReport }) {
   return (
-    <main className="min-h-screen pb-14">
+    <div className="pb-14">
       <header className="bg-sage-700 text-white px-6 pt-10 pb-14 rounded-b-[2rem]">
         <div className="max-w-md mx-auto">
           <p className="text-xs tracking-widest opacity-80 mb-2">학습심리브레인센터</p>
@@ -109,19 +93,13 @@ export default function TemperamentReportView({
           <GuideBlock title="다음 상담에서 함께 볼 부분" items={report.centerPlan.nextCheckpoints} last />
         </section>
 
-        <FamilyAttendanceCalendar attendance={attendance} photos={photos} token={token} />
-        <BrainTestSummarySection tests={brainTests} />
-        <ActivityAlbumSection photos={photos} />
-        <CenterNewsSection photos={blogPhotos} />
-
         <footer className="text-center text-xs text-ink/45 leading-relaxed pt-2 px-4">
           본 결과지는 보호자 상담 및 가정 지도 참고용이며,
           <br />
           외부 공유를 삼가 주세요.
-          <p className="mt-3">ⓒ 학습심리브레인센터</p>
         </footer>
       </div>
-    </main>
+    </div>
   );
 }
 

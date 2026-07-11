@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -892,4 +892,62 @@ export async function reviewMakeupRequest(
 
   const { data: updated } = await db().from("makeup_requests").select(MAKEUP_REQUEST_SELECT).eq("id", id).maybeSingle();
   return updated as unknown as MakeupRequest;
+}
+
+/* ---------------- 학부모 문의/건의사항 ---------------- */
+
+const PARENT_FEEDBACK_SELECT =
+  "id, childId:child_id, type, title, content, status, adminReply:admin_reply, createdAt:created_at, reviewedAt:reviewed_at";
+
+export async function createParentFeedback(input: {
+  childId: string;
+  type: ParentFeedback["type"];
+  title: string;
+  content: string;
+}): Promise<ParentFeedback> {
+  const id = `fb_${randomBytes(6).toString("hex")}`;
+  const row = {
+    id,
+    child_id: input.childId,
+    type: input.type,
+    title: input.title,
+    content: input.content,
+    status: "pending" as const,
+  };
+  const { error } = await db().from("parent_feedback").insert(row);
+  if (error) throw error;
+  const { data } = await db().from("parent_feedback").select(PARENT_FEEDBACK_SELECT).eq("id", id).maybeSingle();
+  return data as unknown as ParentFeedback;
+}
+
+export async function getParentFeedback(opts?: { childId?: string; status?: ParentFeedback["status"] }): Promise<ParentFeedback[]> {
+  let query = db().from("parent_feedback").select(PARENT_FEEDBACK_SELECT).order("created_at", { ascending: false });
+  if (opts?.childId) query = query.eq("child_id", opts.childId);
+  if (opts?.status) query = query.eq("status", opts.status);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as ParentFeedback[];
+}
+
+export async function countPendingParentFeedback(): Promise<number> {
+  const { count, error } = await db()
+    .from("parent_feedback")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function reviewParentFeedback(
+  id: string,
+  status: ParentFeedback["status"],
+  adminReply?: string
+): Promise<ParentFeedback | null> {
+  const { error } = await db()
+    .from("parent_feedback")
+    .update({ status, admin_reply: adminReply ?? null, reviewed_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  const { data } = await db().from("parent_feedback").select(PARENT_FEEDBACK_SELECT).eq("id", id).maybeSingle();
+  return (data as unknown as ParentFeedback) ?? null;
 }

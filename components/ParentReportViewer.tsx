@@ -16,8 +16,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { VerifyPayload } from "@/lib/reportPayload";
-import TemperamentReportView from "./TemperamentReportView";
-import MtprisReportView from "./mtpris/MtprisReportView";
+import ParentDashboard from "./parent/ParentDashboard";
 
 type VerifyResponse = VerifyPayload;
 
@@ -106,32 +105,10 @@ export default function ParentReportViewer({ token }: { token: string }) {
     );
   }
 
-  /* ---------- 2단계: 결과지 (종류별 분기) ---------- */
-  if (result.kind === "mtpris") {
-    return (
-      <MtprisReportView
-        content={result.content}
-        childMaskedName={result.childMaskedName}
-        childGrade={result.childGrade}
-        testDate={result.testDate}
-        counselor={result.counselor}
-        photos={result.photos}
-        blogPhotos={result.blogPhotos}
-        brainTests={result.brainTests}
-        attendance={result.attendance}
-        token={token}
-      />
-    );
-  }
-
+  /* ---------- 2단계: 학부모 마이페이지 대시보드 ---------- */
   return (
-    <TemperamentReportView
-      report={result.report}
-      photos={result.photos}
-      blogPhotos={result.blogPhotos}
-      brainTests={result.brainTests}
-      attendance={result.attendance}
-      token={token}
-    />
+    <main className="min-h-screen">
+      <ParentDashboard payload={result} token={token} />
+    </main>
   );
 }

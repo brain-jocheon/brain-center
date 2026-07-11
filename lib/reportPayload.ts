@@ -11,35 +11,46 @@
 import {
   getReport, getChild, getMtprisReport,
   getPhotosByChild, getBlogPhotos, createSignedPhotoUrl, getBrainTestsByChild, getAttendanceByChild,
+  getParentFeedback,
 } from "@/lib/data";
 import { maskName } from "@/lib/auth";
-import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord, AccessToken } from "@/lib/types";
+import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord, ParentFeedback, AccessToken } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent, type ParentMtprisContent } from "@/lib/mtpris/mask";
 
 const PHOTO_SIGNED_URL_TTL = 600; // 10분 — 짧게 유지해 서명 URL 노출 기간을 제한
 
-export type VerifyPayload =
-  | {
-      kind: "temperament";
-      report: MaskedReport;
-      photos: ParentPhoto[];
-      blogPhotos: ParentPhoto[];
-      brainTests: ParentBrainTest[];
-      attendance: ParentAttendanceRecord[];
-    }
-  | {
-      kind: "mtpris";
-      content: ParentMtprisContent;
-      childMaskedName: string;
-      childGrade: string;
-      testDate: string;
-      counselor: string;
-      photos: ParentPhoto[];
-      blogPhotos: ParentPhoto[];
-      brainTests: ParentBrainTest[];
-      attendance: ParentAttendanceRecord[];
-    };
+/** 학부모 마이페이지 상단 요약용 — 개인정보(연락처 등)는 절대 포함하지 않음 */
+interface ParentChildMeta {
+  serviceType?: string;
+  classDay?: string;
+}
+
+export type VerifyPayload = ParentChildMeta &
+  (
+    | {
+        kind: "temperament";
+        report: MaskedReport;
+        photos: ParentPhoto[];
+        blogPhotos: ParentPhoto[];
+        brainTests: ParentBrainTest[];
+        attendance: ParentAttendanceRecord[];
+        feedback: ParentFeedback[];
+      }
+    | {
+        kind: "mtpris";
+        content: ParentMtprisContent;
+        childMaskedName: string;
+        childGrade: string;
+        testDate: string;
+        counselor: string;
+        photos: ParentPhoto[];
+        blogPhotos: ParentPhoto[];
+        brainTests: ParentBrainTest[];
+        attendance: ParentAttendanceRecord[];
+        feedback: ParentFeedback[];
+      }
+  );
 
 /** memo(관리자 전용) 제거 + storage_path를 단기 서명 URL로 변환 */
 async function toParentPhotos(photos: ActivityPhoto[]): Promise<ParentPhoto[]> {
@@ -109,6 +120,16 @@ async function getParentAttendance(childId: string): Promise<ParentAttendanceRec
   }
 }
 
+/** 학부모가 이전에 남긴 문의/건의사항 이력. [주의] parent_feedback 테이블 마이그레이션
+ * 전이어도 리포트 열람 전체가 깨지지 않도록 실패 시 빈 배열로 대체. */
+async function getParentFeedbackList(childId: string): Promise<ParentFeedback[]> {
+  try {
+    return await getParentFeedback({ childId });
+  } catch {
+    return [];
+  }
+}
+
 /** 검증된 access 토큰 하나에 대해, 학부모에게 내려줄 마스킹된 페이로드를 조립합니다. */
 export async function buildParentReportPayload(access: AccessToken): Promise<VerifyPayload | null> {
   const kind = access.reportKind ?? "temperament";
@@ -121,11 +142,12 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     const fullContent = generateMtprisContent(raw);
     // [보안] 상담사 전용 정보(원자료, 다짐, 상담 질문) 제거 후 전달
     const parentContent = maskMtprisContentForParent(fullContent);
-    const [photos, blogPhotos, brainTests, attendance] = await Promise.all([
+    const [photos, blogPhotos, brainTests, attendance, feedback] = await Promise.all([
       getParentPhotos(raw.childId),
       getCenterNewsPhotos(),
       getParentBrainTests(raw.childId),
       getParentAttendance(raw.childId),
+      getParentFeedbackList(raw.childId),
     ]);
 
     return {
@@ -135,10 +157,13 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
       childGrade: child?.grade ?? "",
       testDate: raw.testDate,
       counselor: raw.counselor,
+      serviceType: child?.serviceType,
+      classDay: child?.classDay,
       photos,
       blogPhotos,
       brainTests,
       attendance,
+      feedback,
     };
   }
 
@@ -146,11 +171,12 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
   if (!report || report.status !== "published") return null;
 
   const child = await getChild(report.childId);
-  const [photos, blogPhotos, brainTests, attendance] = await Promise.all([
+  const [photos, blogPhotos, brainTests, attendance, feedback] = await Promise.all([
     getParentPhotos(report.childId),
     getCenterNewsPhotos(),
     getParentBrainTests(report.childId),
     getParentAttendance(report.childId),
+    getParentFeedbackList(report.childId),
   ]);
 
   // [보안] 실명 제거 + 마스킹된 이름만 포함하여 응답
@@ -161,5 +187,15 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     childGrade: child?.grade ?? "",
   };
 
-  return { kind: "temperament", report: masked, photos, blogPhotos, brainTests, attendance };
+  return {
+    kind: "temperament",
+    report: masked,
+    serviceType: child?.serviceType,
+    classDay: child?.classDay,
+    photos,
+    blogPhotos,
+    brainTests,
+    attendance,
+    feedback,
+  };
 }

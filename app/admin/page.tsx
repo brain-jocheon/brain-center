@@ -3,7 +3,7 @@
  * (미들웨어가 로그인 여부를 검사하므로 이 페이지에 도달하면 이미 인증됨)
  */
 import Link from "next/link";
-import { getChildren, getReportsByChild, getMtprisReportsByChild, countPendingMakeupRequests } from "@/lib/data";
+import { getChildren, getReportsByChild, getMtprisReportsByChild, countPendingMakeupRequests, countPendingParentFeedback } from "@/lib/data";
 import LogoutButton from "@/components/LogoutButton";
 import AddChildForm from "@/components/admin/AddChildForm";
 import AddChildWithMtprisForm from "@/components/admin/AddChildWithMtprisForm";
@@ -24,12 +24,18 @@ export default async function AdminHome() {
     })
   );
 
-  // [주의] makeup_requests 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  // [주의] makeup_requests/parent_feedback 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
   let pendingMakeupCount = 0;
   try {
     pendingMakeupCount = await countPendingMakeupRequests();
   } catch {
     // makeup_requests 테이블 마이그레이션 전 — 0으로 대체
+  }
+  let pendingFeedbackCount = 0;
+  try {
+    pendingFeedbackCount = await countPendingParentFeedback();
+  } catch {
+    // parent_feedback 테이블 마이그레이션 전 — 0으로 대체
   }
 
   return (
@@ -45,6 +51,14 @@ export default async function AdminHome() {
             {pendingMakeupCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 bg-apricot-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {pendingMakeupCount}
+              </span>
+            )}
+          </Link>
+          <Link href="/admin/feedback" className="btn-ghost text-sm relative">
+            학부모 문의
+            {pendingFeedbackCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-apricot-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {pendingFeedbackCount}
               </span>
             )}
           </Link>
