@@ -6,12 +6,14 @@ import FaqAccordion from "@/components/home/FaqAccordion";
 import ContactButton from "@/components/home/ContactButton";
 
 /**
- * 첫 화면 (상담 문의 전환 중심 홈페이지)
+ * 첫 화면 (신규 학부모 홍보 + 기존 학부모 입구를 함께 담는 홈페이지)
  * ---------------------------------------------------------------------
- * 학부모는 문자/카카오톡으로 받은 개별 링크로 바로 결과지에 접속하므로,
- * 이 화면은 (1) 검색 등으로 처음 들어온 방문자가 센터를 신뢰하고 상담
- * 문의로 이어지도록 안내하고 (2) 링크를 잘못 못 받은 분들을 안내하는
- * 역할을 함께 합니다.
+ * 첫 화면에서 방문자를 둘로 나눕니다:
+ * (1) 처음 방문한 학부모 → 센터 소개/프로그램/상담 문의 흐름(#recommend~#contact)
+ * (2) 이용 중인 학부모 → "학부모 전용 공간"(#parent-zone)에서 출결·활동사진·
+ *     검사자료·결과지 확인 입구(개별 링크 안내 + 이름/비밀번호 로그인)로 이동
+ * 학부모 기능 자체는 기존 /report/[token]·/family 화면에 이미 구현되어 있고,
+ * 여기서는 그 입구만 잘 보이게 연결합니다 (접근 제어 변경 없음).
  *
  * [주의] 실제 아이 얼굴이 담긴 사진은 노출하지 않습니다. 활동 사진/소식은
  * "로그인한 학부모에게만" 보여주기로 정한 기존 결정과 충돌하지 않도록,
@@ -168,64 +170,96 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen">
-      {/* 상단 네비게이션 */}
+      {/* 상단 네비게이션 — 모바일에서도 "학부모 전용"과 "상담 문의"가 바로 보이게 유지 */}
       <header className="sticky top-0 z-30 bg-linen/90 backdrop-blur border-b border-sage-100">
         <div className="max-w-5xl mx-auto px-5 sm:px-6 h-16 flex items-center justify-between gap-3">
           <span className="font-bold text-ink tracking-tight shrink-0">학습심리브레인센터</span>
           <nav className="hidden md:flex items-center gap-6 text-sm text-ink/70">
-            <a href="#recommend" className="hover:text-sage-700 transition-colors">이런 아이라면</a>
-            <a href="#programs" className="hover:text-sage-700 transition-colors">프로그램</a>
-            <a href="#flow" className="hover:text-sage-700 transition-colors">이용 안내</a>
-            <a href="#reviews" className="hover:text-sage-700 transition-colors">이야기</a>
+            <a href="#about" className="hover:text-sage-700 transition-colors">센터 소개</a>
+            <a href="#programs" className="hover:text-sage-700 transition-colors">프로그램 안내</a>
+            <a href="#flow" className="hover:text-sage-700 transition-colors">이용 흐름</a>
             <a href="#faq" className="hover:text-sage-700 transition-colors">FAQ</a>
           </nav>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <Link href="/admin" className="hidden sm:inline text-xs text-sage-400 underline underline-offset-4">
               센터 관리자 입장
             </Link>
+            <a
+              href="#parent-zone"
+              className="inline-flex items-center justify-center rounded-full border border-apricot-400/60 bg-apricot-50 px-3.5 py-2 text-[13px] font-medium text-apricot-600 hover:bg-apricot-100 transition-colors"
+            >
+              학부모 전용
+            </a>
             <ContactButton
               phoneHref={contactHref}
               kakaoUrl={settings.kakaoUrl}
               label="상담 문의"
-              className="btn-primary !px-4 !py-2 text-sm"
+              className="btn-primary !px-3.5 !py-2 text-[13px]"
             />
           </div>
         </div>
       </header>
 
-      {/* 히어로 */}
-      <section className="bg-sage-800 text-white px-6 pt-16 pb-24">
+      {/* 히어로 — 부드러운 파스텔톤 배경 + 방문자 선택(신규/기존 학부모) */}
+      <section className="bg-gradient-to-b from-sage-100 via-sage-50 to-linen px-5 sm:px-6 pt-14 pb-4">
         <div className="max-w-3xl mx-auto text-center">
-          <p className="section-label !text-sage-200 mb-4">제주 조천 아동·청소년 성장지원센터</p>
-          <h1 className="text-3xl sm:text-4xl font-bold leading-snug mb-5">
-            아이의 집중력, 감정, 학습 태도에는
+          <p className="section-label mb-4">제주 조천 아동·청소년 성장지원센터</p>
+          <h1 className="text-[26px] sm:text-4xl font-bold leading-snug mb-4 text-ink">
+            아이의 기질, 정서, 학습, 뇌기능을
             <br />
-            <span className="text-sage-200">반드시 이유가 있습니다.</span>
+            <span className="text-sage-700">함께 살펴봅니다.</span>
           </h1>
-          <p className="text-sage-100/90 text-[15px] sm:text-base leading-relaxed mb-9 max-w-xl mx-auto">
-            학습심리브레인센터는 기질검사, 뇌기능검사, 뉴로피드백 훈련, 정서·자존감
-            프로그램을 통해 우리 아이에게 맞는 성장 방향을 함께 찾아갑니다.
+          <p className="text-ink/65 text-[15px] sm:text-base leading-relaxed mb-10 max-w-xl mx-auto">
+            학습심리브레인센터는 아이에게 맞는 성장 방향을 함께 찾아가는
+            아동·청소년 전문 성장지원센터입니다.
           </p>
-          <div className="flex items-center justify-center gap-3 flex-wrap">
-            <ContactButton
-              phoneHref={contactHref}
-              kakaoUrl={settings.kakaoUrl}
-              label="우리 아이 상담 문의하기"
-              className="btn-primary !bg-white !text-sage-800 hover:!bg-sage-50"
-            />
-            <a
-              href="#programs"
-              className="inline-flex items-center justify-center rounded-full border border-white/30 px-6 py-3 text-white font-medium hover:bg-white/10 transition-colors"
-            >
-              프로그램 자세히 보기
-            </a>
+        </div>
+
+        {/* 방문자 선택 카드 — 모바일에서는 세로로 쌓임 */}
+        <div className="max-w-3xl mx-auto grid sm:grid-cols-2 gap-4">
+          <div className="card !border-sage-200 py-7 px-6 text-center flex flex-col">
+            <p className="text-2xl mb-2">🌱</p>
+            <h2 className="font-bold text-lg mb-1.5">처음 방문하신 학부모님</h2>
+            <p className="text-sm text-ink/60 leading-relaxed mb-5 grow">
+              센터 프로그램, 검사 안내, 상담 문의를 확인하실 수 있어요.
+            </p>
+            <div className="flex flex-col gap-2">
+              <a href="#recommend" className="btn-primary w-full !py-2.5 text-sm">
+                센터 알아보기
+              </a>
+              <ContactButton
+                phoneHref={contactHref}
+                kakaoUrl={settings.kakaoUrl}
+                label="상담 문의하기"
+                className="btn-ghost w-full !py-2.5 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="card !bg-apricot-50 !border-apricot-100 py-7 px-6 text-center flex flex-col">
+            <p className="text-2xl mb-2">🏠</p>
+            <h2 className="font-bold text-lg mb-1.5">센터를 이용 중인 학부모님</h2>
+            <p className="text-sm text-ink/60 leading-relaxed mb-5 grow">
+              아이의 출결, 활동사진, 검사자료, 결과지를 확인하실 수 있어요.
+            </p>
+            <div className="flex flex-col gap-2">
+              <a href="#parent-zone" className="btn-primary w-full !py-2.5 text-sm">
+                아이 정보 확인하기
+              </a>
+              <a
+                href="#parent-zone"
+                className="inline-flex items-center justify-center rounded-full border border-apricot-400/60 bg-white px-5 py-2.5 text-sm font-medium text-apricot-600 hover:bg-apricot-100 transition-colors w-full"
+              >
+                결과지 확인하기
+              </a>
+            </div>
           </div>
         </div>
       </section>
 
-      <div className="max-w-5xl mx-auto px-5 sm:px-6">
+      <div className="max-w-5xl mx-auto px-5 sm:px-6 pt-14">
         {/* 이런 아이에게 추천해요 */}
-        <section id="recommend" className="scroll-mt-20 -mt-12 mb-20">
+        <section id="recommend" className="scroll-mt-20 mb-20">
           <div className="card max-w-3xl mx-auto py-9 px-6 sm:px-9">
             <p className="section-label mb-2 text-center">이런 아이에게 추천해요</p>
             <h2 className="text-xl sm:text-2xl font-bold text-center mb-7">
@@ -440,22 +474,65 @@ export default async function Home() {
           <FaqAccordion />
         </section>
 
-        {/* 학부모 안내 */}
-        <section id="parents" className="scroll-mt-20 mb-20">
-          <div className="card max-w-md mx-auto text-center py-10">
-            <p className="section-label mb-3">학부모 안내</p>
-            <h3 className="text-lg font-bold mb-4">아이 성장 결과 리포트</h3>
-            <p className="text-sm leading-relaxed text-ink/70 mb-8">
-              검사 결과지는 문자 또는 카카오톡으로 전달된
+        {/* ==============================================================
+            센터 이용 학부모님 전용 공간
+            --------------------------------------------------------------
+            출결·활동사진·검사자료·결과지는 모두 기존에 구현된 학부모
+            리포트 화면(개별 링크 /report/[token] 또는 이름+비밀번호 로그인
+            → /family) 안에서 함께 보입니다. 여기서는 새 기능을 만들지 않고,
+            그 입구를 잘 보이게 안내만 합니다. 접근 제어(비밀번호 검증)는
+            기존 방식 그대로이며 이 화면에는 개인정보가 일절 없습니다.
+            ============================================================== */}
+        <section id="parent-zone" className="scroll-mt-20 mb-20">
+          <div className="text-center mb-3">
+            <p className="section-label !text-apricot-600 mb-2">센터 이용 학부모 전용</p>
+            <h2 className="text-xl sm:text-2xl font-bold">센터 이용 학부모님 전용 공간</h2>
+          </div>
+          <p className="text-center text-sm text-ink/60 mb-8 max-w-md mx-auto leading-relaxed">
+            아이의 출결, 활동사진, 검사자료, 결과지를 한 곳에서 편하게
+            확인하실 수 있습니다. 아이의 성장 기록을 학부모님과 함께 나눕니다.
+          </p>
+
+          <div className="max-w-3xl mx-auto grid grid-cols-2 gap-3.5 mb-8">
+            <ParentFeatureCard
+              emoji="📅"
+              title="출결 확인"
+              desc="아이의 수업 참여와 출결 상황, 보강 일정을 확인할 수 있어요."
+            />
+            <ParentFeatureCard
+              emoji="📷"
+              title="활동사진"
+              desc="센터에서 진행한 만들기, 요리, 활동수업 사진을 확인할 수 있어요."
+            />
+            <ParentFeatureCard
+              emoji="🧾"
+              title="검사 자료"
+              desc="뇌기능검사 등 진행한 검사의 핵심 지표와 센터 의견을 확인할 수 있어요."
+            />
+            <ParentFeatureCard
+              emoji="📋"
+              title="결과지 확인"
+              desc="기질검사, 뇌기능검사 등 아이별 결과지를 확인할 수 있어요."
+            />
+          </div>
+
+          {/* 접근 방법 — 기존 개별 링크 / 이름+비밀번호 로그인 그대로 유지 */}
+          <div className="card max-w-md mx-auto text-center py-9">
+            <h3 className="text-lg font-bold mb-3">아이 정보 확인하기</h3>
+            <p className="text-sm leading-relaxed text-ink/70 mb-1">
+              문자 또는 카카오톡으로 전달된 <strong>개별 링크</strong>로 접속하시면
               <br />
-              개별 링크를 통해 확인하실 수 있습니다.
-              <br />
+              위 내용을 모두 확인하실 수 있습니다.
+            </p>
+            <p className="text-xs text-ink/45 leading-relaxed">
               링크를 받지 못하셨다면 센터로 문의해 주세요.
             </p>
-            <Link href="/admin" className="text-xs text-sage-400 underline underline-offset-4">
-              센터 관리자 입장
-            </Link>
             <HomeParentLogin />
+            <p className="mt-5 pt-4 border-t border-sage-100">
+              <Link href="/admin" className="text-xs text-sage-400 underline underline-offset-4">
+                센터 관리자 입장
+              </Link>
+            </p>
           </div>
         </section>
 
@@ -505,9 +582,42 @@ export default async function Home() {
         </section>
       </div>
 
-      <footer className="border-t border-sage-100 py-8 text-center text-xs text-ink/40">
-        ⓒ 학습심리브레인센터
+      {/* 푸터 — 연락처/주소/운영 안내 정리 */}
+      <footer className="border-t border-sage-100 bg-white/60 py-10 px-6">
+        <div className="max-w-5xl mx-auto text-center">
+          <p className="font-bold text-ink mb-3">학습심리브레인센터</p>
+          <div className="text-[13px] text-ink/60 leading-relaxed space-y-1 mb-5">
+            {settings.address && <p>📍 {settings.address}</p>}
+            {settings.phone && <p>📞 {settings.phone}</p>}
+            <p>상담 및 방문은 예약제로 운영됩니다. 편하게 연락 주세요.</p>
+          </div>
+          <div className="flex items-center justify-center gap-2.5 flex-wrap mb-6">
+            <ContactButton
+              phoneHref={contactHref}
+              kakaoUrl={settings.kakaoUrl}
+              label="상담 문의하기"
+              className="btn-ghost !py-2 text-sm"
+            />
+            <a
+              href="#parent-zone"
+              className="inline-flex items-center justify-center rounded-full border border-sage-200 bg-white px-5 py-2 text-sm font-medium text-ink/60 hover:bg-sage-50 transition-colors"
+            >
+              학부모 전용 공간
+            </a>
+          </div>
+          <p className="text-xs text-ink/35">ⓒ 학습심리브레인센터</p>
+        </div>
       </footer>
     </main>
+  );
+}
+
+function ParentFeatureCard({ emoji, title, desc }: { emoji: string; title: string; desc: string }) {
+  return (
+    <div className="card !bg-apricot-50/60 !border-apricot-100 py-5 px-4 sm:px-5 text-center">
+      <p className="text-2xl mb-1.5">{emoji}</p>
+      <p className="font-bold text-[15px] mb-1">{title}</p>
+      <p className="text-[12px] sm:text-[13px] text-ink/60 leading-relaxed">{desc}</p>
+    </div>
   );
 }
