@@ -4,22 +4,25 @@
  * 앱 설치 안내 배너
  * ---------------------------------------------------------------------
  * - 이미 홈 화면 앱으로 실행 중(standalone)이면 아무것도 안 보임
- * - 안드로이드/크롬: 브라우저의 beforeinstallprompt를 받아 "앱으로 설치"
- *   버튼 → 누르면 바로 시스템 설치창이 뜸
- * - 아이폰/아이패드(사파리): 자동 설치가 불가능하므로 "공유 → 홈 화면에
- *   추가" 방법을 단계별로 안내
- * - 닫으면 localStorage에 기록해 30일간 다시 보이지 않음
+ * - 안드로이드/아이폰 모두 "브라우저 메뉴 → 홈 화면에 추가" 수동 안내로
+ *   통일합니다.
+ *
+ * [주의 — 2026-07-16] 원래는 안드로이드에서 beforeinstallprompt를 받아
+ * "앱으로 설치" 버튼 한 번으로 설치되게 했었습니다. 하지만 이 방식은
+ * 크롬이 뒤에서 WebAPK(진짜 안드로이드 앱 파일)를 자동 생성해 설치하는
+ * 과정을 거치는데, 이 WebAPK 생성 서버 쪽에 구글 측 문제가 있어 Play
+ * 보호 기능이 "Android 이전 버전에 맞게 개발되었으며 최신 개인정보 보호
+ * 기능을 포함하지 않습니다"라며 설치를 차단하는 사례가 널리 보고되고
+ * 있습니다(우리 사이트만의 문제가 아님, 코드로 해결 불가).
+ * "홈 화면에 추가"(브라우저 자체 바로가기 기능)는 이 WebAPK 생성 과정을
+ * 아예 거치지 않아 문제를 우회하면서도, 열었을 때 전체화면으로 보이는
+ * 효과는 동일합니다.
  */
 
 import { useEffect, useState } from "react";
 
 const DISMISS_KEY = "bc_install_banner_dismissed_at";
 const DISMISS_DAYS = 30;
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
 
 function isRecentlyDismissed(): boolean {
   try {
@@ -44,26 +47,28 @@ function isIos(): boolean {
   return /iPhone|iPad|iPod/i.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
 }
 
+const MenuIcon = () => (
+  <svg viewBox="0 0 24 24" className="inline w-4 h-4 -mt-1 text-sage-700" fill="currentColor">
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
+
+const ShareIcon = () => (
+  <svg viewBox="0 0 24 24" className="inline w-4 h-4 -mt-1 text-sage-700" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><rect x="5" y="11" width="14" height="10" rx="2" />
+  </svg>
+);
+
 export default function InstallAppBanner() {
-  const [mode, setMode] = useState<"hidden" | "android" | "ios" | "ios-guide">("hidden");
-  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [mode, setMode] = useState<"hidden" | "prompt" | "guide">("hidden");
+  const [platform, setPlatform] = useState<"ios" | "android">("android");
 
   useEffect(() => {
     if (isStandalone() || isRecentlyDismissed()) return;
-
-    if (isIos()) {
-      setMode("ios");
-      return;
-    }
-
-    // 안드로이드/크롬 계열 — 설치 가능해지면 브라우저가 이 이벤트를 쏴줌
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstallEvent(e as BeforeInstallPromptEvent);
-      setMode("android");
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    setPlatform(isIos() ? "ios" : "android");
+    setMode("prompt");
   }, []);
 
   function dismiss() {
@@ -75,40 +80,41 @@ export default function InstallAppBanner() {
     setMode("hidden");
   }
 
-  async function installAndroid() {
-    if (!installEvent) return;
-    await installEvent.prompt();
-    const choice = await installEvent.userChoice.catch(() => null);
-    if (choice?.outcome === "accepted") setMode("hidden");
-    else dismiss();
-  }
-
   if (mode === "hidden") return null;
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-40 p-3 sm:p-4 pointer-events-none">
       <div className="max-w-md mx-auto card !border-sage-200 shadow-lg pointer-events-auto">
-        {mode === "ios-guide" ? (
+        {mode === "guide" ? (
           <>
-            <p className="font-bold text-[15px] mb-2">아이폰에 설치하는 방법</p>
-            <ol className="text-sm text-ink/75 leading-relaxed space-y-1.5 mb-3 list-decimal list-inside">
-              <li>
-                사파리 하단(또는 상단)의 <strong>공유 버튼</strong>{" "}
-                <span aria-hidden>
-                  {/* iOS 공유 아이콘 모양 */}
-                  <svg viewBox="0 0 24 24" className="inline w-4 h-4 -mt-1 text-sage-700" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><rect x="5" y="11" width="14" height="10" rx="2" />
-                  </svg>
-                </span>
-                을 눌러주세요.
-              </li>
-              <li>
-                아래로 내려 <strong>"홈 화면에 추가"</strong>를 선택해주세요.
-              </li>
-              <li>
-                오른쪽 위 <strong>"추가"</strong>를 누르면 완료!
-              </li>
-            </ol>
+            <p className="font-bold text-[15px] mb-2">
+              {platform === "ios" ? "아이폰에 설치하는 방법" : "안드로이드에 설치하는 방법"}
+            </p>
+            {platform === "ios" ? (
+              <ol className="text-sm text-ink/75 leading-relaxed space-y-1.5 mb-3 list-decimal list-inside">
+                <li>
+                  사파리 하단(또는 상단)의 <strong>공유 버튼</strong> <ShareIcon />을 눌러주세요.
+                </li>
+                <li>
+                  아래로 내려 <strong>"홈 화면에 추가"</strong>를 선택해주세요.
+                </li>
+                <li>
+                  오른쪽 위 <strong>"추가"</strong>를 누르면 완료!
+                </li>
+              </ol>
+            ) : (
+              <ol className="text-sm text-ink/75 leading-relaxed space-y-1.5 mb-3 list-decimal list-inside">
+                <li>
+                  브라우저 오른쪽 위(또는 아래)의 <strong>메뉴</strong> <MenuIcon />를 눌러주세요.
+                </li>
+                <li>
+                  <strong>"홈 화면에 추가"</strong>를 선택해주세요. ("앱 설치"가 아니라 "홈 화면에 추가"를 선택해 주세요)
+                </li>
+                <li>
+                  안내 창에서 <strong>"추가"</strong>를 누르면 완료!
+                </li>
+              </ol>
+            )}
             <p className="text-xs text-ink/45 mb-3">
               홈 화면에 생긴 아이콘으로 언제든 바로 들어오실 수 있어요.
             </p>
@@ -125,15 +131,9 @@ export default function InstallAppBanner() {
               </p>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0">
-              {mode === "android" ? (
-                <button className="btn-primary !px-3.5 !py-1.5 text-xs" onClick={installAndroid}>
-                  앱으로 설치
-                </button>
-              ) : (
-                <button className="btn-primary !px-3.5 !py-1.5 text-xs" onClick={() => setMode("ios-guide")}>
-                  설치 방법 보기
-                </button>
-              )}
+              <button className="btn-primary !px-3.5 !py-1.5 text-xs" onClick={() => setMode("guide")}>
+                설치 방법 보기
+              </button>
               <button className="text-xs text-ink/40 underline underline-offset-2" onClick={dismiss}>
                 닫기
               </button>
