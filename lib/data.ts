@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -265,6 +265,87 @@ export async function countRecentFailedAttempts(ip: string | null, windowMinutes
     .gte("viewed_at", since);
   if (error) throw error;
   return count ?? 0;
+}
+
+/**
+ * 관리자 전용 — 최근 열람 기록에 아이 이름을 붙여서 반환합니다.
+ * [주의] access_logs.token/report_id는 FK가 아니라 자유 텍스트라(로그는 영구
+ * 보관, access_tokens/reports는 나중에 지워질 수 있음) 여기서 JS로 직접 조인.
+ * 토큰이 비활성화·삭제됐거나 실패한 시도(이름+비밀번호 로그인 실패는 token이
+ * 애초에 null)는 아이 이름 없이 시간/성공여부만 표시됩니다.
+ */
+export async function getRecentAccessLogs(limit = 300): Promise<AccessLogEntry[]> {
+  const { data, error } = await db()
+    .from("access_logs")
+    .select("id, token, success, ip, viewedAt:viewed_at")
+    .order("viewed_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  const logs = (data ?? []) as unknown as AccessLogEntry[];
+
+  const tokens = Array.from(new Set(logs.filter((l) => l.token).map((l) => l.token as string)));
+  if (tokens.length === 0) return logs;
+
+  const { data: accessRows, error: accessError } = await db()
+    .from("access_tokens")
+    .select("token, reportId:report_id, reportKind:report_kind")
+    .in("token", tokens);
+  if (accessError) throw accessError;
+  const accessMap = new Map(
+    ((accessRows ?? []) as unknown as { token: string; reportId: string; reportKind: "temperament" | "mtpris" }[]).map((a) => [a.token, a])
+  );
+
+  const temperamentIds = Array.from(new Set(Array.from(accessMap.values()).filter((a) => a.reportKind === "temperament").map((a) => a.reportId)));
+  const mtprisIds = Array.from(new Set(Array.from(accessMap.values()).filter((a) => a.reportKind === "mtpris").map((a) => a.reportId)));
+
+  const [tempReports, mtprisReports] = await Promise.all([
+    temperamentIds.length
+      ? db().from("reports").select("id, childId:child_id").in("id", temperamentIds)
+      : Promise.resolve({ data: [] as { id: string; childId: string }[] }),
+    mtprisIds.length
+      ? db().from("mtpris_reports").select("id, childId:child_id").in("id", mtprisIds)
+      : Promise.resolve({ data: [] as { id: string; childId: string }[] }),
+  ]);
+  const reportChildMap = new Map<string, string>();
+  for (const r of (tempReports.data ?? []) as unknown as { id: string; childId: string }[]) reportChildMap.set(r.id, r.childId);
+  for (const r of (mtprisReports.data ?? []) as unknown as { id: string; childId: string }[]) reportChildMap.set(r.id, r.childId);
+
+  const childIds = Array.from(new Set(Array.from(reportChildMap.values())));
+  const { data: childRows } = childIds.length
+    ? await db().from("children").select("id, name, grade").in("id", childIds)
+    : { data: [] as { id: string; name: string; grade: string }[] };
+  const childMap = new Map(((childRows ?? []) as unknown as { id: string; name: string; grade: string }[]).map((c) => [c.id, c]));
+
+  return logs.map((l) => {
+    if (!l.token) return l;
+    const access = accessMap.get(l.token);
+    const childId = access ? reportChildMap.get(access.reportId) : undefined;
+    const child = childId ? childMap.get(childId) : undefined;
+    if (!child || !childId) return l;
+    return { ...l, childId, childName: child.name, childGrade: child.grade };
+  });
+}
+
+/** 관리자 전용 — 위 로그를 아이별로 묶어 방문 횟수·마지막 방문 시각 순으로 정리 */
+export function summarizeVisitsByChild(logs: AccessLogEntry[]): ChildVisitSummary[] {
+  const byChild = new Map<string, ChildVisitSummary>();
+  for (const l of logs) {
+    if (!l.success || !l.childId || !l.childName) continue;
+    const existing = byChild.get(l.childId);
+    if (existing) {
+      existing.visitCount += 1;
+      if (l.viewedAt > existing.lastVisitedAt) existing.lastVisitedAt = l.viewedAt;
+    } else {
+      byChild.set(l.childId, {
+        childId: l.childId,
+        childName: l.childName,
+        childGrade: l.childGrade ?? "",
+        visitCount: 1,
+        lastVisitedAt: l.viewedAt,
+      });
+    }
+  }
+  return Array.from(byChild.values()).sort((a, b) => (a.lastVisitedAt < b.lastVisitedAt ? 1 : -1));
 }
 
 /** "아이 이름 + 비밀번호" 홈페이지 로그인 후보 — 그 이름을 가진 아이들의 활성 링크 전부 */

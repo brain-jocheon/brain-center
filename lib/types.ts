@@ -218,6 +218,28 @@ export interface MakeupRequest {
   reviewedAt?: string;
 }
 
+/** 관리자 전용 — 학부모 링크 열람 기록 한 줄. childName은 성공한 시도이고
+ * 토큰이 아직 살아있는 아이일 때만 채워짐(탈퇴/삭제된 아이는 비어있을 수 있음) */
+export interface AccessLogEntry {
+  id: number;
+  token: string | null;
+  success: boolean;
+  ip: string | null;
+  viewedAt: string;
+  childId?: string;
+  childName?: string;
+  childGrade?: string;
+}
+
+/** 관리자 전용 — 아이별 접속 집계(최근 접속 순 정렬용) */
+export interface ChildVisitSummary {
+  childId: string;
+  childName: string;
+  childGrade: string;
+  visitCount: number;
+  lastVisitedAt: string;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

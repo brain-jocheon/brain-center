@@ -62,6 +62,7 @@ export default async function AdminHome() {
               </span>
             )}
           </Link>
+          <Link href="/admin/visits" className="btn-ghost text-sm">접속 기록</Link>
           <Link href="/admin/site" className="btn-ghost text-sm">홈페이지 관리</Link>
           <Link href="/admin/blog" className="btn-ghost text-sm">센터 소식 관리</Link>
           <LogoutButton />
