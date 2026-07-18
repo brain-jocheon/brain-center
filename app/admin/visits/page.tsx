@@ -6,8 +6,8 @@
  * 원본 기록에서만 노출합니다(비밀번호 오답 등은 아이를 특정할 수 없음).
  */
 import Link from "next/link";
-import { getChildren, getRecentAccessLogs, summarizeVisitsByChild } from "@/lib/data";
-import type { AccessLogEntry } from "@/lib/types";
+import { getChildren, getRecentAccessLogs, summarizeVisitsByChild, getVisitorStats } from "@/lib/data";
+import type { AccessLogEntry, VisitorStats } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,13 @@ export default async function AdminVisitsPage() {
     // access_logs 조회 실패해도(마이그레이션 전 등) 이 페이지가 깨지지 않게 대체
   }
 
+  let visitorStats: VisitorStats = { pageViewsToday: 0, uniqueVisitorsToday: 0, pageViewsWeek: 0, uniqueVisitorsWeek: 0 };
+  try {
+    visitorStats = await getVisitorStats();
+  } catch {
+    // page_views 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 대체
+  }
+
   const visits = summarizeVisitsByChild(logs);
 
   const today = startOfToday();
@@ -56,21 +63,41 @@ export default async function AdminVisitsPage() {
       </header>
 
       <div className="max-w-3xl mx-auto px-5 py-8 space-y-8">
-        <section className="grid grid-cols-3 gap-3">
-          <div className="card text-center py-5">
-            <p className="text-2xl font-bold text-sage-700">{successToday}</p>
-            <p className="text-xs text-ink/50 mt-1">오늘 접속</p>
+        <section>
+          <p className="section-label mb-3">전체 방문자 (비밀번호 입력 여부와 무관)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="card text-center py-5">
+              <p className="text-2xl font-bold text-sage-700">{visitorStats.uniqueVisitorsToday}</p>
+              <p className="text-xs text-ink/50 mt-1">오늘 방문자 (페이지뷰 {visitorStats.pageViewsToday})</p>
+            </div>
+            <div className="card text-center py-5">
+              <p className="text-2xl font-bold text-sage-700">{visitorStats.uniqueVisitorsWeek}</p>
+              <p className="text-xs text-ink/50 mt-1">최근 7일 방문자 (페이지뷰 {visitorStats.pageViewsWeek})</p>
+            </div>
           </div>
-          <div className="card text-center py-5">
-            <p className="text-2xl font-bold text-sage-700">{successThisWeek}</p>
-            <p className="text-xs text-ink/50 mt-1">최근 7일 접속</p>
-          </div>
-          <div className="card text-center py-5">
-            <p className="text-2xl font-bold text-sage-700">
-              {visits.length}
-              <span className="text-sm font-normal text-ink/40">/{activeChildren.length}</span>
-            </p>
-            <p className="text-xs text-ink/50 mt-1">접속한 아이 수</p>
+          <p className="text-xs text-ink/40 mt-2 leading-relaxed">
+            홈페이지를 포함해 사이트를 열어본 모든 방문(로그인 여부 무관)을 기준으로 세요. 관리자 화면 방문은 집계에서 제외됩니다.
+          </p>
+        </section>
+
+        <section>
+          <p className="section-label mb-3">학부모 접속 (비밀번호 입력해서 결과지 확인)</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="card text-center py-5">
+              <p className="text-2xl font-bold text-sage-700">{successToday}</p>
+              <p className="text-xs text-ink/50 mt-1">오늘 접속</p>
+            </div>
+            <div className="card text-center py-5">
+              <p className="text-2xl font-bold text-sage-700">{successThisWeek}</p>
+              <p className="text-xs text-ink/50 mt-1">최근 7일 접속</p>
+            </div>
+            <div className="card text-center py-5">
+              <p className="text-2xl font-bold text-sage-700">
+                {visits.length}
+                <span className="text-sm font-normal text-ink/40">/{activeChildren.length}</span>
+              </p>
+              <p className="text-xs text-ink/50 mt-1">접속한 아이 수</p>
+            </div>
           </div>
         </section>
 

@@ -240,6 +240,14 @@ export interface ChildVisitSummary {
   lastVisitedAt: string;
 }
 
+/** 관리자 전용 — 로그인 여부와 무관한 일반 방문자 통계 */
+export interface VisitorStats {
+  pageViewsToday: number;
+  uniqueVisitorsToday: number;
+  pageViewsWeek: number;
+  uniqueVisitorsWeek: number;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

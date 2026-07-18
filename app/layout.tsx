@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PwaRegister from "@/components/PwaRegister";
 import InstallAppBanner from "@/components/InstallAppBanner";
+import PageViewTracker from "@/components/PageViewTracker";
 
 export const metadata: Metadata = {
   title: "학습심리브레인센터",
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko">
       <body>
         <PwaRegister />
+        <PageViewTracker />
         {children}
         {/* 앱 설치 안내 — 이미 설치했거나 닫은 사람에게는 안 보임 */}
         <InstallAppBanner />

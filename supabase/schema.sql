@@ -307,3 +307,23 @@ create index if not exists parent_feedback_status_idx on parent_feedback(status)
 
 alter table parent_feedback enable row level security;
 grant select, insert, update, delete on parent_feedback to service_role;
+
+-- =====================================================================
+-- 일반 방문자 통계 (비밀번호 없이 그냥 홈페이지 등을 구경한 방문)
+-- ---------------------------------------------------------------------
+-- access_logs는 학부모가 비밀번호를 입력해서 "확인"한 시도만 기록합니다.
+-- 이 테이블은 그와 별개로, 로그인 여부와 무관하게 페이지를 열람한 것
+-- 자체를 기록합니다. visitor_id는 개인정보가 아닌 브라우저 로컬 저장소의
+-- 무작위 값(로그인 계정과 무관)이라 실명과 연결되지 않습니다.
+-- =====================================================================
+create table if not exists page_views (
+  id bigserial primary key,
+  path text not null,
+  visitor_id text not null,
+  viewed_at timestamptz not null default now()
+);
+create index if not exists page_views_viewed_at_idx on page_views(viewed_at desc);
+create index if not exists page_views_visitor_idx on page_views(visitor_id);
+
+alter table page_views enable row level security;
+grant select, insert, update, delete on page_views to service_role;

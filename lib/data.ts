@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
@@ -346,6 +346,36 @@ export function summarizeVisitsByChild(logs: AccessLogEntry[]): ChildVisitSummar
     }
   }
   return Array.from(byChild.values()).sort((a, b) => (a.lastVisitedAt < b.lastVisitedAt ? 1 : -1));
+}
+
+/* ---------------- 일반 방문자 통계 ---------------- */
+
+/** [주의] 실패해도 방문자 경험을 막으면 안 되므로 호출부(API 라우트)에서 감쌀 것 */
+export async function recordPageView(path: string, visitorId: string): Promise<void> {
+  const { error } = await db().from("page_views").insert({ path, visitor_id: visitorId });
+  if (error) throw error;
+}
+
+export async function getVisitorStats(): Promise<VisitorStats> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+  const [{ data: todayRows, error: todayError }, { data: weekRows, error: weekError }] = await Promise.all([
+    db().from("page_views").select("visitor_id").gte("viewed_at", todayStart.toISOString()),
+    db().from("page_views").select("visitor_id").gte("viewed_at", weekStart.toISOString()),
+  ]);
+  if (todayError) throw todayError;
+  if (weekError) throw weekError;
+
+  const todayIds = (todayRows ?? []) as unknown as { visitor_id: string }[];
+  const weekIds = (weekRows ?? []) as unknown as { visitor_id: string }[];
+  return {
+    pageViewsToday: todayIds.length,
+    uniqueVisitorsToday: new Set(todayIds.map((r) => r.visitor_id)).size,
+    pageViewsWeek: weekIds.length,
+    uniqueVisitorsWeek: new Set(weekIds.map((r) => r.visitor_id)).size,
+  };
 }
 
 /** "아이 이름 + 비밀번호" 홈페이지 로그인 후보 — 그 이름을 가진 아이들의 활성 링크 전부 */
