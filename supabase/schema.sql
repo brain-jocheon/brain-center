@@ -327,3 +327,7 @@ create index if not exists page_views_visitor_idx on page_views(visitor_id);
 
 alter table page_views enable row level security;
 grant select, insert, update, delete on page_views to service_role;
+-- [주의] bigserial(id)은 내부적으로 시퀀스를 따로 만드는데, 테이블 GRANT만으로는
+-- 그 시퀀스에 대한 권한이 자동으로 안 붙어서 insert 시 "permission denied for
+-- sequence" 에러가 납니다. 시퀀스 권한을 명시적으로 줘야 합니다.
+grant usage, select on sequence page_views_id_seq to service_role;
