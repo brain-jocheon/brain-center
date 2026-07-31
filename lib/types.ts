@@ -248,6 +248,18 @@ export interface VisitorStats {
   uniqueVisitorsWeek: number;
 }
 
+/** 관리자 홈 대시보드 요약 — 전부 기존 테이블 집계, 새 테이블 없음 */
+export interface DashboardSummary {
+  activeCount: number;
+  waitingCount: number;
+  endedCount: number;
+  newThisWeek: number;
+  /** 오늘 요일이 class_day에 포함되는 이용중 아이 수(수업 예정) */
+  todayClassCount: number;
+  /** 최근 7일 이내 등록된 활동사진 수 */
+  recentPhotosCount: number;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

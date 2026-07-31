@@ -18,8 +18,9 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
+import { parseClassDays } from "./classSchedule";
 
 // [주의] 모듈 최상단에서 즉시 클라이언트를 만들면 SUPABASE_URL/KEY가
 // 없을 때 이 모듈을 import하는 순간(next build 포함) 바로 에러가 납니다.
@@ -1061,4 +1062,38 @@ export async function reviewParentFeedback(
   if (error) throw error;
   const { data } = await db().from("parent_feedback").select(PARENT_FEEDBACK_SELECT).eq("id", id).maybeSingle();
   return (data as unknown as ParentFeedback) ?? null;
+}
+
+/* ---------------- 관리자 대시보드 요약 ---------------- */
+
+/** 전부 기존 테이블 집계 — 새 테이블 없음. 실패해도 관리자 홈이 안 깨지게 호출부에서 감쌀 것 */
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const children = await getChildren();
+
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 6);
+  weekAgo.setHours(0, 0, 0, 0);
+
+  const todayWeekday = new Date().getDay();
+
+  let recentPhotosCount = 0;
+  try {
+    const { count, error } = await db()
+      .from("activity_photos")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", weekAgo.toISOString());
+    if (error) throw error;
+    recentPhotosCount = count ?? 0;
+  } catch {
+    // activity_photos 테이블 마이그레이션 전이어도 대시보드 전체가 깨지지 않게 0으로 대체
+  }
+
+  return {
+    activeCount: children.filter((c) => c.status === "active").length,
+    waitingCount: children.filter((c) => c.status === "waiting").length,
+    endedCount: children.filter((c) => c.status === "ended").length,
+    newThisWeek: children.filter((c) => new Date(c.createdAt) >= weekAgo).length,
+    todayClassCount: children.filter((c) => c.status === "active" && parseClassDays(c.classDay).includes(todayWeekday)).length,
+    recentPhotosCount,
+  };
 }

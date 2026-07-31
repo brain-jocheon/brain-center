@@ -14,14 +14,18 @@
  *    (홈페이지 "형제자매 포함 이름+비밀번호" 로그인과 동일한 로직 사용)
  * 4. 응답에 캐시 금지 헤더
  * 5. 모든 시도(성공/실패)를 access_logs 테이블에 기록
+ * 6. IP별 최근 실패 횟수로 레이트리밋 (app/api/report/find-family와 동일한
+ *    countRecentFailedAttempts 재사용 — 예전엔 이 경로에만 빠져 있었음)
  * =====================================================================
  */
 import { NextResponse } from "next/server";
-import { getAccessByToken, logAccess } from "@/lib/data";
+import { getAccessByToken, logAccess, countRecentFailedAttempts } from "@/lib/data";
 import { verifyParentPassword } from "@/lib/auth";
 import { buildParentReportPayload } from "@/lib/reportPayload";
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" };
+const RATE_LIMIT_WINDOW_MIN = 10;
+const RATE_LIMIT_MAX_FAILURES = 8;
 
 async function logAttempt(token: string, reportId: string | null, success: boolean, req: Request) {
   // [보안] 열람 기록은 참고용이므로, 기록 실패가 실제 로그인 흐름을 막으면 안 됨
@@ -38,6 +42,16 @@ export async function POST(req: Request) {
 
   if (typeof token !== "string" || typeof password !== "string" || !password) {
     return NextResponse.json({ message: "비밀번호를 입력해 주세요." }, { status: 400 });
+  }
+
+  const ip = req.headers.get("x-forwarded-for");
+  try {
+    const recentFailures = await countRecentFailedAttempts(ip, RATE_LIMIT_WINDOW_MIN);
+    if (recentFailures >= RATE_LIMIT_MAX_FAILURES) {
+      return NextResponse.json({ message: "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요." }, { status: 429 });
+    }
+  } catch {
+    // 레이트리밋 확인 실패는 로그인 자체를 막지 않음
   }
 
   const access = await getAccessByToken(token);

@@ -19,6 +19,7 @@ import BrainTestForm from "@/components/admin/BrainTestForm";
 import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/BrainTestList";
 import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
 import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
+import ChildDetailTabs from "@/components/admin/ChildDetailTabs";
 import type { AttendanceRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,113 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     })),
   ].sort((a, b) => (a.testDate < b.testDate ? 1 : -1));
 
+  const infoTab = (
+    <>
+      <ChildInfoPanel child={child} />
+      <FamilyGroupPanel child={child} allChildren={allChildren} />
+    </>
+  );
+
+  const reportsTab = (
+    <>
+      {items.length === 0 && (
+        <div className="card text-center text-sm text-ink/50 py-10">
+          아직 등록된 검사가 없습니다.
+          <br />
+          Supabase의 reports 또는 mtpris_reports 테이블에 항목을 추가하면 여기 표시됩니다. (README 참고)
+        </div>
+      )}
+
+      {items.map((r) => {
+        const access = tokens.find((t) => t.reportId === r.id && t.active);
+        return (
+          <section key={`${r.kind}-${r.id}`} className="card">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="font-bold flex items-center gap-2">
+                  {r.title}
+                  {r.kind === "mtpris" && (
+                    <span className="text-[10px] bg-sage-100 text-sage-700 rounded-full px-2 py-0.5 font-medium">MT-PRIS</span>
+                  )}
+                </p>
+                <p className="text-sm text-ink/60 mt-0.5">
+                  검사일 {r.testDate} · 담당 {r.counselor} ·{" "}
+                  <span className={r.status === "published" ? "text-sage-600" : "text-apricot-600"}>
+                    {r.status === "published" ? "공개됨" : "작성 중"}
+                  </span>
+                  {r.kind === "mtpris" && r.hasMemo && (
+                    <>
+                      {" · "}
+                      <span className={r.memoPublic ? "text-sage-600" : "text-ink/40"}>
+                        메모 {r.memoPublic ? "공개" : "비공개"}
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Link href={r.editHref} className="btn-ghost text-sm">수정</Link>
+                <Link href={r.printHref} className="btn-primary text-sm !py-2.5">인쇄 / PDF</Link>
+              </div>
+            </div>
+
+            {/* 학부모 링크 */}
+            <AccessLinkPanel
+              reportId={r.id}
+              reportKind={r.kind}
+              active={access ? { token: access.token } : null}
+              childBirthDate={child.birthDate}
+            />
+          </section>
+        );
+      })}
+    </>
+  );
+
+  const attendanceTab = (
+    <section>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <p className="section-label">출결 관리</p>
+      </div>
+      <AttendanceCalendar
+        childId={child.id}
+        records={attendanceRecords}
+        child={{ id: child.id, name: child.name, classDay: child.classDay }}
+        siblings={siblings}
+      />
+    </section>
+  );
+
+  const brainTab = (
+    <section>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <p className="section-label">뇌기능검사</p>
+      </div>
+      <div className="space-y-4">
+        <BrainTestForm childId={child.id} />
+        <BrainTestList tests={brainTestsWithUrl} />
+      </div>
+    </section>
+  );
+
+  const photosTab = (
+    <section>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <p className="section-label">활동 사진 / 앨범</p>
+      </div>
+      <div className="space-y-4">
+        <PhotoUploadForm
+          lockedChildId={child.id}
+          selectableChildren={otherActiveChildren}
+          activityNameSuggestions={activityNames}
+        />
+        <div className="card">
+          <PhotoGallery photos={galleryPhotos} childNames={childNames} />
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <main className="min-h-screen">
       <header className="bg-white border-b border-sage-100 px-6 py-4">
@@ -114,99 +222,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
         </h1>
       </header>
 
-      <div className="max-w-3xl mx-auto px-5 py-8 space-y-5">
-        <ChildInfoPanel child={child} />
-        <FamilyGroupPanel child={child} allChildren={allChildren} />
-
-        {items.length === 0 && (
-          <div className="card text-center text-sm text-ink/50 py-10">
-            아직 등록된 검사가 없습니다.
-            <br />
-            Supabase의 reports 또는 mtpris_reports 테이블에 항목을 추가하면 여기 표시됩니다. (README 참고)
-          </div>
-        )}
-
-        {items.map((r) => {
-          const access = tokens.find((t) => t.reportId === r.id && t.active);
-          return (
-            <section key={`${r.kind}-${r.id}`} className="card">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <p className="font-bold flex items-center gap-2">
-                    {r.title}
-                    {r.kind === "mtpris" && (
-                      <span className="text-[10px] bg-sage-100 text-sage-700 rounded-full px-2 py-0.5 font-medium">MT-PRIS</span>
-                    )}
-                  </p>
-                  <p className="text-sm text-ink/60 mt-0.5">
-                    검사일 {r.testDate} · 담당 {r.counselor} ·{" "}
-                    <span className={r.status === "published" ? "text-sage-600" : "text-apricot-600"}>
-                      {r.status === "published" ? "공개됨" : "작성 중"}
-                    </span>
-                    {r.kind === "mtpris" && r.hasMemo && (
-                      <>
-                        {" · "}
-                        <span className={r.memoPublic ? "text-sage-600" : "text-ink/40"}>
-                          메모 {r.memoPublic ? "공개" : "비공개"}
-                        </span>
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Link href={r.editHref} className="btn-ghost text-sm">수정</Link>
-                  <Link href={r.printHref} className="btn-primary text-sm !py-2.5">인쇄 / PDF</Link>
-                </div>
-              </div>
-
-              {/* 학부모 링크 */}
-              <AccessLinkPanel
-                reportId={r.id}
-                reportKind={r.kind}
-                active={access ? { token: access.token } : null}
-                childBirthDate={child.birthDate}
-              />
-            </section>
-          );
-        })}
-
-        <section>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <p className="section-label">출결 관리</p>
-          </div>
-          <AttendanceCalendar
-            childId={child.id}
-            records={attendanceRecords}
-            child={{ id: child.id, name: child.name, classDay: child.classDay }}
-            siblings={siblings}
-          />
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <p className="section-label">뇌기능검사</p>
-          </div>
-          <div className="space-y-4">
-            <BrainTestForm childId={child.id} />
-            <BrainTestList tests={brainTestsWithUrl} />
-          </div>
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <p className="section-label">활동 사진 / 앨범</p>
-          </div>
-          <div className="space-y-4">
-            <PhotoUploadForm
-              lockedChildId={child.id}
-              selectableChildren={otherActiveChildren}
-              activityNameSuggestions={activityNames}
-            />
-            <div className="card">
-              <PhotoGallery photos={galleryPhotos} childNames={childNames} />
-            </div>
-          </div>
-        </section>
+      <div className="max-w-3xl mx-auto px-5 py-8">
+        <ChildDetailTabs
+          info={infoTab}
+          reports={reportsTab}
+          attendance={attendanceTab}
+          brain={brainTab}
+          photos={photosTab}
+        />
       </div>
     </main>
   );
