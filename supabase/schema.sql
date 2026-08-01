@@ -420,3 +420,37 @@ create index if not exists monthly_reports_child_idx on monthly_reports(child_id
 
 alter table monthly_reports enable row level security;
 grant select, insert, update, delete on monthly_reports to service_role;
+
+-- =====================================================================
+-- 2.5단계: 공지 대상분리 + 읽음여부
+-- ---------------------------------------------------------------------
+-- notices(공개 홈페이지 공지, 로그인 불필요)와 완전히 별개입니다.
+-- parent_notices는 학부모 로그인(토큰+비밀번호) 후에만 보이고, 특정
+-- 대상에게만 노출되도록 audience_type/value로 필터링됩니다.
+-- =====================================================================
+
+create table if not exists parent_notices (
+  id text primary key,
+  title text not null,
+  body text not null,
+  -- 'all' | 'status' | 'program' | 'weekday' | 'child'
+  audience_type text not null check (audience_type in ('all', 'status', 'program', 'weekday', 'child')),
+  -- 타입별 해석: status→active/waiting/ended, program→children.service_type 값,
+  -- weekday→'0'~'6'(Date.getDay() 규칙), child→아이 id. all이면 null.
+  audience_value text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists parent_notices_created_idx on parent_notices(created_at desc);
+
+create table if not exists parent_notice_reads (
+  notice_id text not null references parent_notices(id) on delete cascade,
+  child_id text not null references children(id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (notice_id, child_id)
+);
+
+alter table parent_notices enable row level security;
+alter table parent_notice_reads enable row level security;
+grant select, insert, update, delete on parent_notices, parent_notice_reads to service_role;

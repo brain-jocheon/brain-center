@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 import { parseClassDays } from "./classSchedule";
 
@@ -1027,6 +1027,135 @@ export async function getPublicMonthlyReports(childId: string): Promise<ParentMo
     homeGuidance: r.homeGuidance,
     nextMonthGoals: r.nextMonthGoals,
   }));
+}
+
+/* ---------------- 학부모 전용 공지 (대상분리 + 읽음여부) ---------------- */
+// [주의] 아래 "홈페이지 관리: 공지사항"(notices)과 완전히 별개입니다.
+// notices는 로그인 없이 보이는 공개 홈페이지 공지, parent_notices는 학부모
+// 로그인 후에만 보이고 대상별로 필터링되는 공지입니다.
+
+const PARENT_NOTICE_SELECT =
+  "id, title, body, audienceType:audience_type, audienceValue:audience_value, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+
+/** 이 공지가 이 아이(보호자)에게 노출되어야 하는지 — 순수 함수, DB 조회 없음.
+ * 학부모 화면 필터링과 읽음 기록 API 양쪽에서 재사용됩니다. */
+export function matchesNoticeAudience(
+  notice: Pick<ParentNoticeAdmin, "audienceType" | "audienceValue">,
+  child: Pick<Child, "id" | "status" | "serviceType" | "classDay">
+): boolean {
+  switch (notice.audienceType) {
+    case "all":
+      return true;
+    case "status":
+      return notice.audienceValue === child.status;
+    case "program":
+      return !!child.serviceType && notice.audienceValue === child.serviceType;
+    case "weekday":
+      return notice.audienceValue !== undefined && parseClassDays(child.classDay).includes(Number(notice.audienceValue));
+    case "child":
+      return notice.audienceValue === child.id;
+    default:
+      return false;
+  }
+}
+
+export interface ParentNoticeInput {
+  title: string;
+  body: string;
+  audienceType: ParentNoticeAdmin["audienceType"];
+  audienceValue?: string;
+}
+
+export async function createParentNotice(input: ParentNoticeInput): Promise<ParentNoticeAdmin> {
+  const id = `pnotice_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    title: input.title,
+    body: input.body,
+    audience_type: input.audienceType,
+    audience_value: input.audienceValue || null,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("parent_notices").insert(row);
+  if (error) throw error;
+  return { id, title: input.title, body: input.body, audienceType: input.audienceType, audienceValue: input.audienceValue, createdAt: now, updatedAt: now };
+}
+
+export async function updateParentNotice(id: string, patch: Partial<ParentNoticeInput>): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.title !== undefined) row.title = patch.title;
+  if (patch.body !== undefined) row.body = patch.body;
+  if (patch.audienceType !== undefined) row.audience_type = patch.audienceType;
+  if (patch.audienceValue !== undefined) row.audience_value = patch.audienceValue || null;
+  const { data, error } = await db().from("parent_notices").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 실수 삭제 대비 — 소프트삭제(deleted_at만 세팅, 실제 행은 남김) */
+export async function softDeleteParentNotice(id: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("parent_notices")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+export async function getParentNotice(id: string): Promise<ParentNoticeAdmin | null> {
+  const { data, error } = await db().from("parent_notices").select(PARENT_NOTICE_SELECT).eq("id", id).is("deleted_at", null).maybeSingle();
+  if (error) throw error;
+  return (data as unknown as ParentNoticeAdmin) ?? null;
+}
+
+/** 관리자 전용 — 전체 목록(소프트삭제 제외, 최신순) */
+export async function getParentNoticesAdmin(): Promise<ParentNoticeAdmin[]> {
+  const { data, error } = await db()
+    .from("parent_notices")
+    .select(PARENT_NOTICE_SELECT)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as ParentNoticeAdmin[];
+}
+
+/** 학부모 화면용 — 이 아이에게 매칭되는 공지만, 읽음여부 붙여서 최신순 반환 */
+export async function getNoticesForChild(child: Child): Promise<ParentFacingNotice[]> {
+  const all = await getParentNoticesAdmin();
+  const matched = all.filter((n) => matchesNoticeAudience(n, child));
+  if (matched.length === 0) return [];
+
+  const { data: reads, error } = await db()
+    .from("parent_notice_reads")
+    .select("noticeId:notice_id")
+    .eq("child_id", child.id)
+    .in(
+      "notice_id",
+      matched.map((n) => n.id)
+    );
+  if (error) throw error;
+  const readSet = new Set((reads ?? []).map((r: { noticeId: string }) => r.noticeId));
+
+  return matched.map((n) => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    createdAt: n.createdAt,
+    isRead: readSet.has(n.id),
+  }));
+}
+
+/** 학부모(무상태) 쪽에서 공지를 처음 펼쳐볼 때 읽음 기록. [보안] 호출부(API 라우트)가
+ * matchesNoticeAudience로 이 아이가 실제 대상인지 다시 검증한 뒤에만 호출해야 함
+ * (클라이언트가 아무 noticeId나 넣어 읽음 기록을 남기는 것 방지). */
+export async function markNoticeRead(noticeId: string, childId: string): Promise<void> {
+  const { error } = await db()
+    .from("parent_notice_reads")
+    .upsert({ notice_id: noticeId, child_id: childId, read_at: new Date().toISOString() }, { onConflict: "notice_id,child_id" });
+  if (error) throw error;
 }
 
 /* ---------------- 홈페이지 관리: 센터소개/위치 + 공지사항 ---------------- */

@@ -335,6 +335,28 @@ export interface ParentMonthlyReport {
   nextMonthGoals?: string;
 }
 
+/** 학부모 전용 공지(관리자 뷰) — 로그인 없이 보이는 공개 홈페이지 notices와는 완전히 별개.
+ * audienceValue는 audienceType에 따라 다르게 해석됨(스키마 주석 참고). */
+export interface ParentNoticeAdmin {
+  id: string;
+  title: string;
+  body: string;
+  audienceType: "all" | "status" | "program" | "weekday" | "child";
+  audienceValue?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+/** 학부모 화면에 내려가는 공지 — 대상 매칭 필드 없이 이미 필터링된 것만, isRead 포함 */
+export interface ParentFacingNotice {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

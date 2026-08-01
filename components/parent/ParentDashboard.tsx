@@ -30,8 +30,9 @@ import GrowthTimelineSection from "../GrowthTimelineSection";
 import TemperamentReportView from "../TemperamentReportView";
 import MtprisReportView from "../mtpris/MtprisReportView";
 import FeedbackSection from "./FeedbackSection";
+import NoticeSection from "./NoticeSection";
 
-type TabKey = "home" | "attendance" | "photos" | "brain" | "growth" | "report" | "feedback";
+type TabKey = "home" | "attendance" | "photos" | "brain" | "growth" | "notices" | "report" | "feedback";
 
 const WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -91,12 +92,14 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
   ).length;
   const needsMakeup = payload.attendance.some((a) => a.status === "absent" && !a.makeupDate);
   const recentComment = payload.childComments[0];
+  const unreadNoticeCount = payload.notices.filter((n) => !n.isRead).length;
 
-  const CARDS: { key: Exclude<TabKey, "home">; emoji: string; title: string; desc: string; show: boolean }[] = [
+  const CARDS: { key: Exclude<TabKey, "home">; emoji: string; title: string; desc: string; show: boolean; badge?: number }[] = [
     { key: "attendance", emoji: "📅", title: "출결 확인", desc: "아이의 수업 출석 및 보강 현황을 확인할 수 있어요.", show: hasAttendance },
     { key: "photos", emoji: "📷", title: "활동사진", desc: "센터에서 참여한 활동사진과 수업 모습을 확인할 수 있어요.", show: hasPhotos },
     { key: "brain", emoji: "🧾", title: "검사 자료", desc: "진행한 검사자료와 상담 의견을 확인할 수 있어요.", show: hasBrainTests },
     { key: "growth", emoji: "🌱", title: "성장기록", desc: "출결·사진·코멘트·검사자료·월간리포트를 시간순으로 볼 수 있어요.", show: hasGrowth },
+    { key: "notices", emoji: "🔔", title: "공지사항", desc: "센터에서 전달하는 공지를 확인할 수 있어요.", show: payload.notices.length > 0, badge: unreadNoticeCount },
     { key: "report", emoji: "📋", title: "결과지 확인", desc: `${reportLabel} 결과지를 확인할 수 있어요.`, show: true },
     { key: "feedback", emoji: "✍️", title: "문의·건의사항", desc: "선생님께 전달하고 싶은 내용을 남길 수 있어요.", show: true },
   ];
@@ -106,6 +109,7 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
     photos: "활동사진",
     brain: "검사 자료",
     growth: "성장기록",
+    notices: "공지사항",
     report: "결과지 확인",
     feedback: "문의·건의사항",
   };
@@ -185,8 +189,13 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
                 <button
                   key={c.key}
                   onClick={() => setTab(c.key)}
-                  className="card !p-4 text-left hover:border-sage-300 transition-colors"
+                  className="card !p-4 text-left hover:border-sage-300 transition-colors relative"
                 >
+                  {!!c.badge && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-apricot-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                      {c.badge}
+                    </span>
+                  )}
                   <p className="text-2xl mb-2">{c.emoji}</p>
                   <p className="font-bold text-[15px] mb-1">{c.title}</p>
                   <p className="text-xs text-ink/55 leading-relaxed">{c.desc}</p>
@@ -247,6 +256,7 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
               monthlyReports={payload.monthlyReports}
             />
           )}
+          {tab === "notices" && <NoticeSection token={token} notices={payload.notices} />}
           {tab === "feedback" && (
             <FeedbackSection
               token={token}
