@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 import { parseClassDays } from "./classSchedule";
 
@@ -923,6 +923,110 @@ export async function createCommentTemplate(text: string): Promise<CommentTempla
 export async function deleteCommentTemplate(id: string): Promise<void> {
   const { error } = await db().from("comment_templates").delete().eq("id", id);
   if (error) throw error;
+}
+
+/* ---------------- 월간 성장 리포트 ---------------- */
+
+const MONTHLY_REPORT_SELECT =
+  "id, childId:child_id, month, participation, strengths, improvements, homeGuidance:home_guidance, nextMonthGoals:next_month_goals, counselor, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+
+export interface MonthlyReportInput {
+  childId: string;
+  month: string;
+  participation?: string;
+  strengths?: string;
+  improvements?: string;
+  homeGuidance?: string;
+  nextMonthGoals?: string;
+  counselor?: string;
+  isPublicToParent: boolean;
+}
+
+/** [주의] child_id+month unique 제약이 있어, 이미 그 달 리포트가 있으면 Postgres가
+ * code '23505'(unique_violation)로 에러를 던짐 — 호출부(API 라우트)가 그 케이스를
+ * "이미 있으니 수정해주세요" 안내로 바꿔서 응답해야 함. */
+export async function createMonthlyReport(input: MonthlyReportInput): Promise<MonthlyReport> {
+  const id = `mrep_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    child_id: input.childId,
+    month: input.month,
+    participation: input.participation?.trim() || null,
+    strengths: input.strengths?.trim() || null,
+    improvements: input.improvements?.trim() || null,
+    home_guidance: input.homeGuidance?.trim() || null,
+    next_month_goals: input.nextMonthGoals?.trim() || null,
+    counselor: input.counselor?.trim() || null,
+    is_public_to_parent: input.isPublicToParent,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("monthly_reports").insert(row);
+  if (error) throw error;
+  const { data, error: fetchError } = await db().from("monthly_reports").select(MONTHLY_REPORT_SELECT).eq("id", id).maybeSingle();
+  if (fetchError) throw fetchError;
+  return data as unknown as MonthlyReport;
+}
+
+export async function updateMonthlyReport(
+  id: string,
+  patch: Partial<Omit<MonthlyReportInput, "childId" | "month">>
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.participation !== undefined) row.participation = patch.participation?.trim() || null;
+  if (patch.strengths !== undefined) row.strengths = patch.strengths?.trim() || null;
+  if (patch.improvements !== undefined) row.improvements = patch.improvements?.trim() || null;
+  if (patch.homeGuidance !== undefined) row.home_guidance = patch.homeGuidance?.trim() || null;
+  if (patch.nextMonthGoals !== undefined) row.next_month_goals = patch.nextMonthGoals?.trim() || null;
+  if (patch.counselor !== undefined) row.counselor = patch.counselor?.trim() || null;
+  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  const { data, error } = await db().from("monthly_reports").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 실수 삭제 대비 — 소프트삭제(deleted_at만 세팅, 실제 행은 남김) */
+export async function softDeleteMonthlyReport(id: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("monthly_reports")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 전용 — 아이 상세 "월간리포트" 탭용. 최신 월 순(소프트삭제 제외) */
+export async function getMonthlyReportsByChild(childId: string): Promise<MonthlyReport[]> {
+  const { data, error } = await db()
+    .from("monthly_reports")
+    .select(MONTHLY_REPORT_SELECT)
+    .eq("child_id", childId)
+    .is("deleted_at", null)
+    .order("month", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as MonthlyReport[];
+}
+
+/** 학부모 화면용 — 공개로 설정된 월간 리포트만, 관리자 전용 필드 없이 반환 */
+export async function getPublicMonthlyReports(childId: string): Promise<ParentMonthlyReport[]> {
+  const { data, error } = await db()
+    .from("monthly_reports")
+    .select(MONTHLY_REPORT_SELECT)
+    .eq("child_id", childId)
+    .eq("is_public_to_parent", true)
+    .is("deleted_at", null)
+    .order("month", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as MonthlyReport[]).map((r) => ({
+    month: r.month,
+    participation: r.participation,
+    strengths: r.strengths,
+    improvements: r.improvements,
+    homeGuidance: r.homeGuidance,
+    nextMonthGoals: r.nextMonthGoals,
+  }));
 }
 
 /* ---------------- 홈페이지 관리: 센터소개/위치 + 공지사항 ---------------- */

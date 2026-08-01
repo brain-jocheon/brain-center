@@ -391,3 +391,32 @@ alter table class_record_children enable row level security;
 alter table child_comments enable row level security;
 alter table comment_templates enable row level security;
 grant select, insert, update, delete on class_records, class_record_children, child_comments, comment_templates to service_role;
+
+-- =====================================================================
+-- 2단계: 월간 성장 리포트
+-- ---------------------------------------------------------------------
+-- 아이 한 명당 한 달에 한 건(unique child_id+month). 학부모 성장기록
+-- 타임라인에 공개된 것만 노출됩니다. class_records/child_comments와
+-- 동일하게 관리자 실수 삭제 대비 소프트삭제(deleted_at)를 씁니다.
+-- =====================================================================
+
+create table if not exists monthly_reports (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  month text not null, -- 'YYYY-MM'
+  participation text,
+  strengths text,
+  improvements text,
+  home_guidance text,
+  next_month_goals text,
+  counselor text,
+  is_public_to_parent boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  unique (child_id, month)
+);
+create index if not exists monthly_reports_child_idx on monthly_reports(child_id);
+
+alter table monthly_reports enable row level security;
+grant select, insert, update, delete on monthly_reports to service_role;

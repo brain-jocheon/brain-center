@@ -306,6 +306,35 @@ export interface CommentTemplate {
   createdAt: string;
 }
 
+/** 월간 성장 리포트(관리자 전체 뷰) — 아이 한 명당 한 달에 한 건(month: 'YYYY-MM').
+ * deletedAt이 있으면 관리자 실수 삭제로 소프트삭제된 것(목록 조회에서 제외). */
+export interface MonthlyReport {
+  id: string;
+  childId: string;
+  month: string;
+  participation?: string;
+  strengths?: string;
+  improvements?: string;
+  homeGuidance?: string;
+  nextMonthGoals?: string;
+  counselor?: string;
+  /** [보안] 이 값이 true여야만 이 아이 학부모 화면(성장기록 타임라인)에 노출됨 */
+  isPublicToParent: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+/** 학부모 화면에 내려가는 월간 리포트 — 공개로 설정된 것만, 관리자 전용 필드 없음 */
+export interface ParentMonthlyReport {
+  month: string;
+  participation?: string;
+  strengths?: string;
+  improvements?: string;
+  homeGuidance?: string;
+  nextMonthGoals?: string;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

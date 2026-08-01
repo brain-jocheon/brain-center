@@ -9,7 +9,7 @@ import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
-  getChildCommentsByChild,
+  getChildCommentsByChild, getMonthlyReportsByChild,
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
@@ -22,7 +22,8 @@ import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
 import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
 import ChildDetailTabs from "@/components/admin/ChildDetailTabs";
 import ChildCommentsHistory, { type ChildCommentItem } from "@/components/admin/ChildCommentsHistory";
-import type { AttendanceRecord } from "@/lib/types";
+import MonthlyReportsPanel from "@/components/admin/MonthlyReportsPanel";
+import type { AttendanceRecord, MonthlyReport } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     }));
   } catch {
     // class_records/child_comments 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
+
+  // [주의] monthly_reports 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  let monthlyReports: MonthlyReport[] = [];
+  try {
+    monthlyReports = await getMonthlyReportsByChild(child.id);
+  } catch {
+    // monthly_reports 테이블 마이그레이션 전 — 빈 목록으로 대체
   }
 
   const otherActiveChildren = allChildren
@@ -232,6 +241,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   );
 
   const commentsTab = <ChildCommentsHistory items={commentItems} />;
+  const monthlyTab = <MonthlyReportsPanel childId={child.id} reports={monthlyReports} />;
 
   return (
     <main className="min-h-screen">
@@ -250,6 +260,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           brain={brainTab}
           photos={photosTab}
           comments={commentsTab}
+          monthly={monthlyTab}
         />
       </div>
     </main>

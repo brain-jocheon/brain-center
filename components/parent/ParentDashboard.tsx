@@ -26,11 +26,12 @@ import FamilyAttendanceCalendar from "../FamilyAttendanceCalendar";
 import ActivityAlbumSection from "../ActivityAlbumSection";
 import CenterNewsSection from "../CenterNewsSection";
 import BrainTestSummarySection from "../BrainTestSummarySection";
+import GrowthTimelineSection from "../GrowthTimelineSection";
 import TemperamentReportView from "../TemperamentReportView";
 import MtprisReportView from "../mtpris/MtprisReportView";
 import FeedbackSection from "./FeedbackSection";
 
-type TabKey = "home" | "attendance" | "photos" | "brain" | "report" | "feedback";
+type TabKey = "home" | "attendance" | "photos" | "brain" | "growth" | "report" | "feedback";
 
 const WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -82,11 +83,20 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
   const hasAttendance = payload.attendance.length > 0;
   const hasPhotos = payload.photos.length > 0 || payload.blogPhotos.length > 0 || payload.childComments.length > 0;
   const hasBrainTests = payload.brainTests.length > 0;
+  const hasGrowth = hasAttendance || hasPhotos || hasBrainTests || payload.monthlyReports.length > 0;
+
+  const thisMonthPrefix = new Date().toISOString().slice(0, 7);
+  const attendanceThisMonth = payload.attendance.filter(
+    (a) => a.classDate.startsWith(thisMonthPrefix) && a.status === "present"
+  ).length;
+  const needsMakeup = payload.attendance.some((a) => a.status === "absent" && !a.makeupDate);
+  const recentComment = payload.childComments[0];
 
   const CARDS: { key: Exclude<TabKey, "home">; emoji: string; title: string; desc: string; show: boolean }[] = [
     { key: "attendance", emoji: "📅", title: "출결 확인", desc: "아이의 수업 출석 및 보강 현황을 확인할 수 있어요.", show: hasAttendance },
     { key: "photos", emoji: "📷", title: "활동사진", desc: "센터에서 참여한 활동사진과 수업 모습을 확인할 수 있어요.", show: hasPhotos },
     { key: "brain", emoji: "🧾", title: "검사 자료", desc: "진행한 검사자료와 상담 의견을 확인할 수 있어요.", show: hasBrainTests },
+    { key: "growth", emoji: "🌱", title: "성장기록", desc: "출결·사진·코멘트·검사자료·월간리포트를 시간순으로 볼 수 있어요.", show: hasGrowth },
     { key: "report", emoji: "📋", title: "결과지 확인", desc: `${reportLabel} 결과지를 확인할 수 있어요.`, show: true },
     { key: "feedback", emoji: "✍️", title: "문의·건의사항", desc: "선생님께 전달하고 싶은 내용을 남길 수 있어요.", show: true },
   ];
@@ -95,6 +105,7 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
     attendance: "출결 확인",
     photos: "활동사진",
     brain: "검사 자료",
+    growth: "성장기록",
     report: "결과지 확인",
     feedback: "문의·건의사항",
   };
@@ -142,6 +153,30 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
               {nextClass && <InfoRow label="다음 수업일" value={nextClass} />}
             </dl>
           </section>
+
+          {(hasAttendance || recentComment) && (
+            <section className="card">
+              <p className="section-label mb-3">이번 달 현황</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {hasAttendance && (
+                  <span className="text-xs bg-sage-50 text-sage-700 rounded-full px-3 py-1.5 font-medium">
+                    이번달 출석 {attendanceThisMonth}회
+                  </span>
+                )}
+                {needsMakeup && (
+                  <span className="text-xs bg-apricot-50 text-apricot-700 rounded-full px-3 py-1.5 font-medium">
+                    보강 필요
+                  </span>
+                )}
+              </div>
+              {recentComment && (
+                <button onClick={() => setTab("photos")} className="text-left w-full">
+                  <p className="text-xs text-ink/40 mb-1">최근 코멘트 ({recentComment.classDate})</p>
+                  <p className="text-sm text-ink/70 leading-relaxed">{recentComment.comment}</p>
+                </button>
+              )}
+            </section>
+          )}
 
           <section>
             <p className="text-sm text-ink/50 mb-3 px-1">확인할 항목을 선택해주세요.</p>
@@ -203,6 +238,15 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
             </>
           )}
           {tab === "brain" && <BrainTestSummarySection tests={payload.brainTests} />}
+          {tab === "growth" && (
+            <GrowthTimelineSection
+              attendance={payload.attendance}
+              photos={payload.photos}
+              comments={payload.childComments}
+              brainTests={payload.brainTests}
+              monthlyReports={payload.monthlyReports}
+            />
+          )}
           {tab === "feedback" && (
             <FeedbackSection
               token={token}
