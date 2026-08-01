@@ -9,6 +9,7 @@ import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
+  getChildCommentsByChild,
 } from "@/lib/data";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
@@ -20,6 +21,7 @@ import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/Bra
 import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
 import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
 import ChildDetailTabs from "@/components/admin/ChildDetailTabs";
+import ChildCommentsHistory, { type ChildCommentItem } from "@/components/admin/ChildCommentsHistory";
 import type { AttendanceRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +64,22 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     attendanceRecords = await getAttendanceByChild(child.id);
   } catch {
     // attendance_records 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
+
+  // [주의] class_records/child_comments 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  let commentItems: ChildCommentItem[] = [];
+  try {
+    const childComments = await getChildCommentsByChild(child.id);
+    commentItems = childComments.map((c) => ({
+      childCommentId: c.childCommentId,
+      classDate: c.classRecord.classDate,
+      activityName: c.classRecord.activityName,
+      activityType: c.classRecord.activityType,
+      comment: c.comment || c.classRecord.comment || "",
+      isPublicToParent: c.isPublicToParent,
+    }));
+  } catch {
+    // class_records/child_comments 테이블 마이그레이션 전 — 빈 목록으로 대체
   }
 
   const otherActiveChildren = allChildren
@@ -213,6 +231,8 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     </section>
   );
 
+  const commentsTab = <ChildCommentsHistory items={commentItems} />;
+
   return (
     <main className="min-h-screen">
       <header className="bg-white border-b border-sage-100 px-6 py-4">
@@ -229,6 +249,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           attendance={attendanceTab}
           brain={brainTab}
           photos={photosTab}
+          comments={commentsTab}
         />
       </div>
     </main>

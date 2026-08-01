@@ -8,7 +8,7 @@
 
 import { useState, type ReactNode } from "react";
 
-type TabKey = "info" | "reports" | "attendance" | "brain" | "photos";
+type TabKey = "info" | "reports" | "attendance" | "brain" | "photos" | "comments";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "info", label: "기본정보" },
@@ -16,6 +16,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "attendance", label: "출결·보강" },
   { key: "brain", label: "뇌기능검사" },
   { key: "photos", label: "활동사진" },
+  { key: "comments", label: "수업 코멘트" },
 ];
 
 export default function ChildDetailTabs({
@@ -24,15 +25,17 @@ export default function ChildDetailTabs({
   attendance,
   brain,
   photos,
+  comments,
 }: {
   info: ReactNode;
   reports: ReactNode;
   attendance: ReactNode;
   brain: ReactNode;
   photos: ReactNode;
+  comments: ReactNode;
 }) {
   const [tab, setTab] = useState<TabKey>("info");
-  const content: Record<TabKey, ReactNode> = { info, reports, attendance, brain, photos };
+  const content: Record<TabKey, ReactNode> = { info, reports, attendance, brain, photos, comments };
 
   return (
     <div>

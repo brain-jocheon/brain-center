@@ -260,6 +260,52 @@ export interface DashboardSummary {
   recentPhotosCount: number;
 }
 
+/** 수업기록 1건(관리자 전체 뷰) — 여러 아이가 함께 참여한 수업 하나를 나타냄.
+ * deletedAt이 있으면 관리자 실수 삭제로 소프트삭제된 것(목록 조회에서 제외). */
+export interface ClassRecord {
+  id: string;
+  classDate: string;
+  activityName: string;
+  activityType: ActivityPhoto["activityType"];
+  /** 전체 공용 코멘트 — 아이별 오버라이드가 없으면 이 문구가 그대로 쓰임 */
+  comment?: string;
+  counselor?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  childIds: string[];
+}
+
+/** 아이별 코멘트 오버라이드(관리자 전체 뷰) — comment가 비어있으면 화면에서
+ * 소속 class_records.comment를 그대로 보여줌 */
+export interface ChildComment {
+  id: string;
+  classRecordId: string;
+  childId: string;
+  comment?: string;
+  /** [보안] 이 값이 true여야만 이 아이 학부모 화면에 노출됨 */
+  isPublicToParent: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+/** 학부모 화면에 내려가는 코멘트 — 공개로 설정된 것만, 관리자 전용 필드 없음 */
+export interface ParentChildComment {
+  classRecordId: string;
+  classDate: string;
+  activityName: string;
+  activityType: ActivityPhoto["activityType"];
+  comment: string;
+}
+
+/** 관리자가 직접 관리하는 코멘트 자주쓰는 문구 */
+export interface CommentTemplate {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
 /** 학부모 마이페이지 "문의/건의사항" — childId는 서버가 access 토큰으로 확인해서 채움 */
 export interface ParentFeedback {
   id: string;

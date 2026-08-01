@@ -80,7 +80,7 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
   const nextClass = nextClassDateLabel(payload.classDay);
 
   const hasAttendance = payload.attendance.length > 0;
-  const hasPhotos = payload.photos.length > 0 || payload.blogPhotos.length > 0;
+  const hasPhotos = payload.photos.length > 0 || payload.blogPhotos.length > 0 || payload.childComments.length > 0;
   const hasBrainTests = payload.brainTests.length > 0;
 
   const CARDS: { key: Exclude<TabKey, "home">; emoji: string; title: string; desc: string; show: boolean }[] = [
@@ -198,7 +198,7 @@ export default function ParentDashboard({ members }: { members: FamilyMember[] }
           {tab === "attendance" && <FamilyAttendanceCalendar attendance={payload.attendance} photos={payload.photos} token={token} />}
           {tab === "photos" && (
             <>
-              <ActivityAlbumSection photos={payload.photos} />
+              <ActivityAlbumSection photos={payload.photos} comments={payload.childComments} />
               <CenterNewsSection photos={payload.blogPhotos} />
             </>
           )}

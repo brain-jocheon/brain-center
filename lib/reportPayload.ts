@@ -11,9 +11,9 @@
 import {
   getReport, getChild, getMtprisReport,
   getPhotosByChild, getBlogPhotos, createSignedPhotoUrl, getBrainTestsByChild, getAttendanceByChild,
-  getParentFeedback,
+  getParentFeedback, getPublicChildComments,
 } from "@/lib/data";
-import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord, ParentFeedback, AccessToken } from "@/lib/types";
+import type { ActivityPhoto, MaskedReport, ParentPhoto, ParentBrainTest, ParentAttendanceRecord, ParentFeedback, ParentChildComment, AccessToken } from "@/lib/types";
 import { generateMtprisContent } from "@/lib/mtpris/generate";
 import { maskMtprisContentForParent, type ParentMtprisContent } from "@/lib/mtpris/mask";
 
@@ -35,6 +35,7 @@ export type VerifyPayload = ParentChildMeta &
         brainTests: ParentBrainTest[];
         attendance: ParentAttendanceRecord[];
         feedback: ParentFeedback[];
+        childComments: ParentChildComment[];
       }
     | {
         kind: "mtpris";
@@ -48,6 +49,7 @@ export type VerifyPayload = ParentChildMeta &
         brainTests: ParentBrainTest[];
         attendance: ParentAttendanceRecord[];
         feedback: ParentFeedback[];
+        childComments: ParentChildComment[];
       }
   );
 
@@ -146,6 +148,16 @@ async function getParentFeedbackList(childId: string): Promise<ParentFeedback[]>
   }
 }
 
+/** 공개로 설정된 수업 코멘트만. [주의] class_records/child_comments 테이블 마이그레이션
+ * 전이어도 리포트 열람 전체가 깨지지 않도록 실패 시 빈 배열로 대체. */
+async function getParentChildComments(childId: string): Promise<ParentChildComment[]> {
+  try {
+    return await getPublicChildComments(childId);
+  } catch {
+    return [];
+  }
+}
+
 /** 검증된 access 토큰 하나에 대해, 학부모에게 내려줄 마스킹된 페이로드를 조립합니다. */
 export async function buildParentReportPayload(access: AccessToken): Promise<VerifyPayload | null> {
   const kind = access.reportKind ?? "temperament";
@@ -158,12 +170,13 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     const fullContent = generateMtprisContent(raw);
     // [보안] 상담사 전용 정보(원자료, 다짐, 상담 질문) 제거 후 전달
     const parentContent = maskMtprisContentForParent(fullContent);
-    const [photos, blogPhotos, brainTests, attendance, feedback] = await Promise.all([
+    const [photos, blogPhotos, brainTests, attendance, feedback, childComments] = await Promise.all([
       getParentPhotos(raw.childId),
       getCenterNewsPhotos(),
       getParentBrainTests(raw.childId),
       getParentAttendance(raw.childId),
       getParentFeedbackList(raw.childId),
+      getParentChildComments(raw.childId),
     ]);
 
     return {
@@ -182,6 +195,7 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
       brainTests,
       attendance,
       feedback,
+      childComments,
     };
   }
 
@@ -189,12 +203,13 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
   if (!report || report.status !== "published") return null;
 
   const child = await getChild(report.childId);
-  const [photos, blogPhotos, brainTests, attendance, feedback] = await Promise.all([
+  const [photos, blogPhotos, brainTests, attendance, feedback, childComments] = await Promise.all([
     getParentPhotos(report.childId),
     getCenterNewsPhotos(),
     getParentBrainTests(report.childId),
     getParentAttendance(report.childId),
     getParentFeedbackList(report.childId),
+    getParentChildComments(report.childId),
   ]);
 
   // childId는 여전히 제거(클라이언트가 다른 아이 자료를 유추할 단서를 안 남김),
@@ -216,5 +231,6 @@ export async function buildParentReportPayload(access: AccessToken): Promise<Ver
     brainTests,
     attendance,
     feedback,
+    childComments,
   };
 }

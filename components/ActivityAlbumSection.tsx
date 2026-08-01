@@ -6,18 +6,25 @@
  */
 
 import { useState } from "react";
-import type { ParentPhoto } from "@/lib/types";
+import type { ParentPhoto, ParentChildComment } from "@/lib/types";
 
 const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   class: "수업", craft: "만들기", cooking: "요리", neurofeedback: "뉴로피드백", event: "행사", other: "기타",
 };
 
-export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[] }) {
+export default function ActivityAlbumSection({
+  photos,
+  comments = [],
+}: {
+  photos: ParentPhoto[];
+  /** 사진과 같은 날짜·활동명으로 묶여 표시되는 수업 코멘트(공개 설정된 것만, 서버가 이미 필터링) */
+  comments?: ParentChildComment[];
+}) {
   const [selected, setSelected] = useState<ParentPhoto | null>(null);
   const [commentExpanded, setCommentExpanded] = useState(false);
-  if (photos.length === 0) return null;
+  if (photos.length === 0 && comments.length === 0) return null;
 
-  const groups = groupByActivity(photos);
+  const groups = mergeGroups(photos, comments);
 
   function openPhoto(p: ParentPhoto) {
     setSelected(p);
@@ -39,13 +46,18 @@ export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[]
               {g.activityDate} · {g.activityName}
               <span className="text-xs text-ink/40 font-normal ml-2">{ACTIVITY_TYPE_LABEL[g.activityType]}</span>
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              {g.photos.map((p) => (
-                <button key={p.id} onClick={() => openPhoto(p)} className="aspect-square rounded-lg overflow-hidden">
-                  <img src={p.url} alt={p.activityName} className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
+            {g.photos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {g.photos.map((p) => (
+                  <button key={p.id} onClick={() => openPhoto(p)} className="aspect-square rounded-lg overflow-hidden">
+                    <img src={p.url} alt={p.activityName} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {g.comment && (
+              <p className="text-sm text-ink/70 mt-1.5 leading-relaxed whitespace-pre-wrap">{g.comment}</p>
+            )}
           </div>
         ))}
       </div>
@@ -84,19 +96,23 @@ export default function ActivityAlbumSection({ photos }: { photos: ParentPhoto[]
   );
 }
 
-function groupByActivity(photos: ParentPhoto[]) {
-  const map = new Map<string, ParentPhoto[]>();
+/** 사진과 코멘트를 같은 날짜+활동명 키로 묶습니다. 사진 없이 코멘트만 있는 세션은
+ * photos가 빈 배열인 그룹으로 나타나고(위에서 그리드 없이 텍스트만 렌더링), 사진과 코멘트가
+ * 둘 다 있으면 그리드 아래에 코멘트가 함께 표시됩니다. */
+function mergeGroups(photos: ParentPhoto[], comments: ParentChildComment[]) {
+  type Group = { key: string; activityDate: string; activityName: string; activityType: string; photos: ParentPhoto[]; comment?: string };
+  const map = new Map<string, Group>();
   for (const p of photos) {
     const key = `${p.activityDate}__${p.activityName}`;
-    const list = map.get(key) ?? [];
-    list.push(p);
-    map.set(key, list);
+    const g = map.get(key) ?? { key, activityDate: p.activityDate, activityName: p.activityName, activityType: p.activityType, photos: [] };
+    g.photos.push(p);
+    map.set(key, g);
   }
-  return Array.from(map.entries()).map(([key, list]) => ({
-    key,
-    activityDate: list[0].activityDate,
-    activityName: list[0].activityName,
-    activityType: list[0].activityType,
-    photos: list,
-  }));
+  for (const c of comments) {
+    const key = `${c.classDate}__${c.activityName}`;
+    const g = map.get(key) ?? { key, activityDate: c.classDate, activityName: c.activityName, activityType: c.activityType, photos: [] };
+    g.comment = c.comment;
+    map.set(key, g);
+  }
+  return Array.from(map.values()).sort((a, b) => (a.activityDate < b.activityDate ? 1 : -1));
 }

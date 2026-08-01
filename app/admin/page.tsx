@@ -94,6 +94,7 @@ export default async function AdminHome() {
         </p>
 
         <div className="mb-8 flex flex-wrap items-start gap-3">
+          <Link href="/admin/class-records/new" className="btn-primary text-sm">+ 수업 기록 등록</Link>
           <AddChildWithMtprisForm />
           <AddChildForm />
         </div>

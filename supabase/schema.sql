@@ -331,3 +331,63 @@ grant select, insert, update, delete on page_views to service_role;
 -- 그 시퀀스에 대한 권한이 자동으로 안 붙어서 insert 시 "permission denied for
 -- sequence" 에러가 납니다. 시퀀스 권한을 명시적으로 줘야 합니다.
 grant usage, select on sequence page_views_id_seq to service_role;
+
+-- =====================================================================
+-- 1.5단계: 수업기록 빠른등록 + 아이별 코멘트 + 코멘트 템플릿
+-- ---------------------------------------------------------------------
+-- 사진(activity_photos)은 사진 1장당 공용 설명 하나뿐이라, 같은 사진에
+-- 여러 아이가 태그되면 모든 아이 부모에게 같은 문구가 보이는 한계가 있었습니다.
+-- class_records(수업기록 1건) + child_comments(아이별 코멘트 오버라이드)로
+-- "사진은 다같이, 코멘트는 아이마다 다르게"와 "사진 없이 코멘트만" 둘 다 지원합니다.
+-- class_records/child_comments는 관리자 실수 삭제 대비로 소프트삭제(deleted_at)를 씁니다.
+-- =====================================================================
+
+create table if not exists class_records (
+  id text primary key,
+  class_date date not null,
+  activity_name text not null,
+  activity_type text not null check (activity_type in ('class', 'craft', 'cooking', 'neurofeedback', 'event', 'other')),
+  comment text,
+  counselor text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists class_records_date_idx on class_records(class_date desc);
+
+create table if not exists class_record_children (
+  class_record_id text not null references class_records(id) on delete cascade,
+  child_id text not null references children(id) on delete cascade,
+  primary key (class_record_id, child_id)
+);
+create index if not exists class_record_children_child_idx on class_record_children(child_id);
+
+create table if not exists child_comments (
+  id text primary key,
+  class_record_id text not null references class_records(id) on delete cascade,
+  child_id text not null references children(id) on delete cascade,
+  -- 비어있으면 화면에서 class_records.comment(전체 공용 코멘트)를 그대로 보여줍니다.
+  comment text,
+  is_public_to_parent boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  unique (class_record_id, child_id)
+);
+create index if not exists child_comments_child_idx on child_comments(child_id);
+
+-- 이 수업기록에서 함께 올린 사진을 admin 화면에서 묶어보기 위한 연결(선택값).
+-- 기존 사진(값 없음)은 전혀 영향 없음.
+alter table activity_photos add column if not exists class_record_id text references class_records(id) on delete set null;
+
+create table if not exists comment_templates (
+  id text primary key,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table class_records enable row level security;
+alter table class_record_children enable row level security;
+alter table child_comments enable row level security;
+alter table comment_templates enable row level security;
+grant select, insert, update, delete on class_records, class_record_children, child_comments, comment_templates to service_role;

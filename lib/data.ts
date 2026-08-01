@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 import { parseClassDays } from "./classSchedule";
 
@@ -609,6 +609,8 @@ export interface ActivityPhotoInput {
   isPublicToBlog: boolean;
   memo?: string;
   studentIds: string[];
+  /** 수업기록 빠른등록에서 함께 올린 사진이면 그 수업기록 id (선택) */
+  classRecordId?: string;
 }
 
 export async function createActivityPhoto(input: ActivityPhotoInput): Promise<ActivityPhoto> {
@@ -624,6 +626,7 @@ export async function createActivityPhoto(input: ActivityPhotoInput): Promise<Ac
     is_public_to_parent: input.isPublicToParent,
     is_public_to_blog: input.isPublicToBlog,
     memo: input.memo || null,
+    class_record_id: input.classRecordId || null,
     created_at: now,
     updated_at: now,
   };
@@ -689,6 +692,236 @@ export async function createSignedPhotoUrl(path: string, expiresIn = 600): Promi
 
 export async function deletePhotoFile(path: string): Promise<void> {
   const { error } = await db().storage.from(PHOTO_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
+/* ---------------- 수업기록 / 아이별 코멘트 / 코멘트 템플릿 ---------------- */
+
+const CLASS_RECORD_SELECT =
+  "id, classDate:class_date, activityName:activity_name, activityType:activity_type, comment, counselor, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+
+async function attachChildIds(records: Omit<ClassRecord, "childIds">[]): Promise<ClassRecord[]> {
+  if (records.length === 0) return [];
+  const ids = records.map((r) => r.id);
+  const { data, error } = await db()
+    .from("class_record_children")
+    .select("classRecordId:class_record_id, childId:child_id")
+    .in("class_record_id", ids);
+  if (error) throw error;
+  const map = new Map<string, string[]>();
+  for (const row of (data ?? []) as { classRecordId: string; childId: string }[]) {
+    const list = map.get(row.classRecordId) ?? [];
+    list.push(row.childId);
+    map.set(row.classRecordId, list);
+  }
+  return records.map((r) => ({ ...r, childIds: map.get(r.id) ?? [] }));
+}
+
+export interface ClassRecordInput {
+  classDate: string;
+  activityName: string;
+  activityType: ActivityPhoto["activityType"];
+  /** 전체 공용 코멘트 — 아이별 오버라이드가 없는 아이는 화면에서 이 문구를 그대로 씀 */
+  comment?: string;
+  counselor?: string;
+  childIds: string[];
+  /** 아이마다 하나씩 채워서 넘김(폼에서 모든 참여 아이에 대해 공개여부를 명시적으로 정하기 때문) */
+  childComments: Record<string, { comment?: string; isPublicToParent: boolean }>;
+}
+
+export async function getClassRecord(id: string): Promise<ClassRecord | null> {
+  const { data, error } = await db().from("class_records").select(CLASS_RECORD_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const [full] = await attachChildIds([data as unknown as Omit<ClassRecord, "childIds">]);
+  return full;
+}
+
+/** 수업기록 1건 생성 — 참여 아이 목록 + 아이별 코멘트(공개여부 포함)까지 한 번에 저장.
+ * 사진은 별도(POST /api/admin/photos)로, 생성된 이 id를 classRecordId로 붙여서 올림. */
+export async function createClassRecord(input: ClassRecordInput): Promise<ClassRecord> {
+  const id = `class_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    class_date: input.classDate,
+    activity_name: input.activityName,
+    activity_type: input.activityType,
+    comment: input.comment?.trim() || null,
+    counselor: input.counselor?.trim() || null,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("class_records").insert(row);
+  if (error) throw error;
+
+  if (input.childIds.length > 0) {
+    const links = input.childIds.map((childId) => ({ class_record_id: id, child_id: childId }));
+    const { error: linkError } = await db().from("class_record_children").insert(links);
+    if (linkError) throw linkError;
+  }
+
+  const commentRows = input.childIds.map((childId) => {
+    const entry = input.childComments[childId] ?? { isPublicToParent: false };
+    return {
+      id: `ccm_${randomBytes(6).toString("hex")}`,
+      class_record_id: id,
+      child_id: childId,
+      comment: entry.comment?.trim() || null,
+      is_public_to_parent: entry.isPublicToParent,
+      created_at: now,
+      updated_at: now,
+    };
+  });
+  if (commentRows.length > 0) {
+    const { error: commentError } = await db().from("child_comments").insert(commentRows);
+    if (commentError) throw commentError;
+  }
+
+  const record = await getClassRecord(id);
+  if (!record) throw new Error("수업기록 생성 직후 조회에 실패했습니다.");
+  return record;
+}
+
+export async function updateClassRecord(
+  id: string,
+  patch: { comment?: string; counselor?: string }
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.comment !== undefined) row.comment = patch.comment.trim() || null;
+  if (patch.counselor !== undefined) row.counselor = patch.counselor.trim() || null;
+  const { data, error } = await db().from("class_records").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 실수 삭제 대비 — 소프트삭제(deleted_at만 세팅, 실제 행은 남김) */
+export async function softDeleteClassRecord(id: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("class_records")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+export async function updateChildComment(
+  id: string,
+  patch: Partial<Pick<ChildComment, "comment" | "isPublicToParent">>
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.comment !== undefined) row.comment = patch.comment?.trim() || null;
+  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  const { data, error } = await db().from("child_comments").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 전용 — 아이 상세 "수업 코멘트" 탭용. 이 아이가 참여한 수업기록을 최신순으로,
+ * 그 아이의 코멘트(있으면 오버라이드, 없으면 공용 comment를 화면에서 그대로 보여주면 됨)와 함께 반환 */
+export async function getChildCommentsByChild(
+  childId: string
+): Promise<{ classRecord: ClassRecord; childCommentId?: string; comment?: string; isPublicToParent: boolean }[]> {
+  const { data: links, error: linkError } = await db()
+    .from("class_record_children")
+    .select("classRecordId:class_record_id")
+    .eq("child_id", childId);
+  if (linkError) throw linkError;
+  const recordIds = (links ?? []).map((l: { classRecordId: string }) => l.classRecordId);
+  if (recordIds.length === 0) return [];
+
+  const { data: records, error: recError } = await db()
+    .from("class_records")
+    .select(CLASS_RECORD_SELECT)
+    .in("id", recordIds)
+    .is("deleted_at", null)
+    .order("class_date", { ascending: false });
+  if (recError) throw recError;
+  const withChildIds = await attachChildIds((records ?? []) as unknown as Omit<ClassRecord, "childIds">[]);
+
+  const { data: comments, error: commentError } = await db()
+    .from("child_comments")
+    .select("id, classRecordId:class_record_id, comment, isPublicToParent:is_public_to_parent")
+    .eq("child_id", childId)
+    .in("class_record_id", recordIds);
+  if (commentError) throw commentError;
+  const commentMap = new Map(
+    ((comments ?? []) as { id: string; classRecordId: string; comment: string | null; isPublicToParent: boolean }[]).map(
+      (c) => [c.classRecordId, c]
+    )
+  );
+
+  return withChildIds.map((r) => {
+    const c = commentMap.get(r.id);
+    return {
+      classRecord: r,
+      childCommentId: c?.id,
+      comment: c?.comment ?? undefined,
+      isPublicToParent: c?.isPublicToParent ?? false,
+    };
+  });
+}
+
+/** 학부모 화면용 — 이 아이에게 공개로 설정된 코멘트만, 관리자 전용 필드 없이 반환 */
+export async function getPublicChildComments(childId: string): Promise<ParentChildComment[]> {
+  const { data: comments, error } = await db()
+    .from("child_comments")
+    .select("classRecordId:class_record_id, comment")
+    .eq("child_id", childId)
+    .eq("is_public_to_parent", true);
+  if (error) throw error;
+  const rows = (comments ?? []) as { classRecordId: string; comment: string | null }[];
+  if (rows.length === 0) return [];
+
+  const recordIds = rows.map((r) => r.classRecordId);
+  const { data: records, error: recError } = await db()
+    .from("class_records")
+    .select(CLASS_RECORD_SELECT)
+    .in("id", recordIds)
+    .is("deleted_at", null);
+  if (recError) throw recError;
+  const recordMap = new Map(((records ?? []) as unknown as Omit<ClassRecord, "childIds">[]).map((r) => [r.id, r]));
+
+  const result = rows
+    .map((r) => {
+      const record = recordMap.get(r.classRecordId);
+      if (!record) return null;
+      const text = (r.comment || record.comment || "").trim();
+      if (!text) return null;
+      const parent: ParentChildComment = {
+        classRecordId: record.id,
+        classDate: record.classDate,
+        activityName: record.activityName,
+        activityType: record.activityType,
+        comment: text,
+      };
+      return parent;
+    })
+    .filter((p): p is ParentChildComment => p !== null);
+  result.sort((a, b) => (a.classDate < b.classDate ? 1 : -1));
+  return result;
+}
+
+const COMMENT_TEMPLATE_SELECT = "id, text, createdAt:created_at";
+
+/** 관리자가 자주 쓰는 문구 모음 (최신순) */
+export async function getCommentTemplates(): Promise<CommentTemplate[]> {
+  const { data, error } = await db().from("comment_templates").select(COMMENT_TEMPLATE_SELECT).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as CommentTemplate[];
+}
+
+export async function createCommentTemplate(text: string): Promise<CommentTemplate> {
+  const id = `tmpl_${randomBytes(6).toString("hex")}`;
+  const row = { id, text, created_at: new Date().toISOString() };
+  const { error } = await db().from("comment_templates").insert(row);
+  if (error) throw error;
+  return row as unknown as CommentTemplate;
+}
+
+export async function deleteCommentTemplate(id: string): Promise<void> {
+  const { error } = await db().from("comment_templates").delete().eq("id", id);
   if (error) throw error;
 }
 
