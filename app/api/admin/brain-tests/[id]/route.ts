@@ -3,11 +3,17 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
-import { deleteBrainTest, deleteBrainFile, updateBrainTest } from "@/lib/data";
-import type { BrainIndicator } from "@/lib/types";
+import { deleteBrainTest, deleteBrainFile, updateBrainTest, getStaffById } from "@/lib/data";
+import type { BrainIndicator, BrainTest } from "@/lib/types";
+
+const STATUS_VALUES: BrainTest["status"][] = [
+  "draft", "uploaded", "extracting", "needs_review", "confirmed", "ai_processing",
+  "ai_drafted", "teacher_reviewed", "pending_approval", "approved", "published", "failed",
+];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isFullAdmin(getCurrentActor())) {
+  const actor = getCurrentActor();
+  if (!isFullAdmin(actor)) {
     return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
@@ -18,11 +24,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         indicators?: BrainIndicator[];
         opinion?: string;
         isPublicToParent?: boolean;
+        testType?: string;
+        testName?: string;
+        measuringOrg?: string;
+        measuredBy?: string;
+        parentSummary?: string;
+        status?: string;
       }
     | null;
 
   if (!body || Object.keys(body).length === 0) {
     return NextResponse.json({ message: "잘못된 요청입니다." }, { status: 400 });
+  }
+  if (body.status !== undefined && !STATUS_VALUES.includes(body.status as BrainTest["status"])) {
+    return NextResponse.json({ message: "처리 상태 값이 올바르지 않습니다." }, { status: 400 });
   }
 
   const indicators = Array.isArray(body.indicators)
@@ -31,13 +46,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         .filter((i) => i.label && i.value)
     : undefined;
 
-  const found = await updateBrainTest(params.id, {
-    testDate: body.testDate?.trim(),
-    counselor: body.counselor?.trim(),
-    indicators,
-    opinion: body.opinion?.trim(),
-    isPublicToParent: body.isPublicToParent,
-  });
+  // [8단계] 승인자 이름 기록용 — legacy_admin은 "관리자", staff면 실제 이름 조회
+  const approverName =
+    actor?.kind === "staff" ? (await getStaffById(actor.staffId))?.name ?? "관리자" : "관리자";
+
+  const found = await updateBrainTest(
+    params.id,
+    {
+      testDate: body.testDate?.trim(),
+      counselor: body.counselor?.trim(),
+      indicators,
+      opinion: body.opinion?.trim(),
+      isPublicToParent: body.isPublicToParent,
+      testType: body.testType,
+      testName: body.testName,
+      measuringOrg: body.measuringOrg,
+      measuredBy: body.measuredBy,
+      parentSummary: body.parentSummary,
+      status: body.status as BrainTest["status"] | undefined,
+    },
+    approverName
+  );
   if (!found) {
     return NextResponse.json({ message: "뇌기능검사를 찾을 수 없습니다." }, { status: 404 });
   }

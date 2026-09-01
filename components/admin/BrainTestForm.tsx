@@ -13,17 +13,25 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { BRAIN_INDICATOR_DESCRIPTIONS, BRAIN_INDICATOR_LABEL_SUGGESTIONS } from "@/lib/content/brainTest";
+import { STATUS_LABEL } from "./brainTestStatus";
+import type { BrainTest } from "@/lib/types";
 
 const BRAIN_TEST_BUCKET = "brain-test-files";
 const MAIN_INDICATOR_LABELS = Object.keys(BRAIN_INDICATOR_DESCRIPTIONS);
 
-export default function BrainTestForm({ childId }: { childId: string }) {
+export default function BrainTestForm({ childId, testTypeSuggestions }: { childId: string; testTypeSuggestions: string[] }) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [testDate, setTestDate] = useState("");
   const [counselor, setCounselor] = useState("");
+  const [testType, setTestType] = useState("");
+  const [testName, setTestName] = useState("");
+  const [measuringOrg, setMeasuringOrg] = useState("");
+  const [measuredBy, setMeasuredBy] = useState("");
   const [indicators, setIndicators] = useState<{ label: string; value: string }[]>([{ label: "", value: "" }]);
   const [opinion, setOpinion] = useState("");
+  const [parentSummary, setParentSummary] = useState("");
+  const [status, setStatus] = useState<BrainTest["status"]>("draft");
   const [isPublicToParent, setIsPublicToParent] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -53,8 +61,14 @@ export default function BrainTestForm({ childId }: { childId: string }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
     setTestDate("");
     setCounselor("");
+    setTestType("");
+    setTestName("");
+    setMeasuringOrg("");
+    setMeasuredBy("");
     setIndicators([{ label: "", value: "" }]);
     setOpinion("");
+    setParentSummary("");
+    setStatus("draft");
     setIsPublicToParent(true);
     setMessage("");
   }
@@ -110,6 +124,12 @@ export default function BrainTestForm({ childId }: { childId: string }) {
         indicators,
         opinion: opinion.trim() || undefined,
         isPublicToParent,
+        testType: testType.trim() || undefined,
+        testName: testName.trim() || undefined,
+        measuringOrg: measuringOrg.trim() || undefined,
+        measuredBy: measuredBy.trim() || undefined,
+        parentSummary: parentSummary.trim() || undefined,
+        status,
       }),
     });
     setSaving(false);
@@ -151,6 +171,39 @@ export default function BrainTestForm({ childId }: { childId: string }) {
         <label className="block">
           <span className="block text-sm font-medium mb-1.5">담당자</span>
           <input className="input" value={counselor} onChange={(e) => setCounselor(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1.5">검사 종류</span>
+          <input
+            className="input"
+            list="brain-test-type-suggestions"
+            placeholder="예: 파낙토스 뇌기능검사"
+            value={testType}
+            onChange={(e) => setTestType(e.target.value)}
+          />
+          <datalist id="brain-test-type-suggestions">
+            {testTypeSuggestions.map((t) => <option key={t} value={t} />)}
+          </datalist>
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1.5">검사명</span>
+          <input className="input" value={testName} onChange={(e) => setTestName(e.target.value)} placeholder="예: 1차 뇌기능검사" />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1.5">측정기관</span>
+          <input className="input" value={measuringOrg} onChange={(e) => setMeasuringOrg(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1.5">측정자</span>
+          <input className="input" value={measuredBy} onChange={(e) => setMeasuredBy(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1.5">처리 상태</span>
+          <select className="input" value={status} onChange={(e) => setStatus(e.target.value as BrainTest["status"])}>
+            {Object.entries(STATUS_LABEL).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
         </label>
       </div>
 
@@ -197,13 +250,18 @@ export default function BrainTestForm({ childId }: { childId: string }) {
       </div>
 
       <label className="block mt-4">
-        <span className="block text-sm font-medium mb-1.5">의견 (쉬운 말로 정리해서 적어주세요)</span>
+        <span className="block text-sm font-medium mb-1.5">의견 (내부용 — 자유롭게 적어주세요)</span>
         <textarea className="input min-h-28" value={opinion} onChange={(e) => setOpinion(e.target.value)} />
+      </label>
+
+      <label className="block mt-4">
+        <span className="block text-sm font-medium mb-1.5">학부모 공개용 요약 (선택 — 비워두면 위 의견이 그대로 학부모에게 보여요)</span>
+        <textarea className="input min-h-20" value={parentSummary} onChange={(e) => setParentSummary(e.target.value)} placeholder="학부모님이 이해하기 쉬운 문장으로 따로 정리하고 싶을 때만 입력하세요." />
       </label>
 
       <label className="flex items-center gap-2 text-sm mt-3">
         <input type="checkbox" checked={isPublicToParent} onChange={(e) => setIsPublicToParent(e.target.checked)} />
-        학부모에게 공개 (원본 파일은 제외하고 지표·의견만 노출)
+        학부모에게 공개 (원본 파일은 제외하고 지표·요약만 노출)
       </label>
 
       {message && <p className="text-sm text-apricot-600 mt-3">{message}</p>}

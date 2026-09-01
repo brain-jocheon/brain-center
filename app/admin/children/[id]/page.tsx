@@ -9,9 +9,9 @@ import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
-  getChildCommentsByChild, getMonthlyReportsByChild, actorCanAccessChild,
+  getChildCommentsByChild, getMonthlyReportsByChild, actorCanAccessChild, getBrainTestTypes,
 } from "@/lib/data";
-import { getCurrentActor } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
 import ChildInfoPanel from "@/components/admin/ChildInfoPanel";
@@ -39,6 +39,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   // [7단계/보안] 담당 아동이 아닌 선생님은 URL을 직접 쳐도 볼 수 없어야 함(IDOR 방지)
   const actor = getCurrentActor();
   if (!actor || !(await actorCanAccessChild(actor, child.id))) notFound();
+  const canEditBrainTests = isFullAdmin(actor);
 
   const [reports, mtprisReports, tokens, allChildren, photos, activityNames] = await Promise.all([
     getReportsByChild(child.id),
@@ -48,6 +49,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     getPhotosByChild(child.id),
     getActivityNames(),
   ]);
+
+  // [8단계] 검사 종류 자동완성 — brain_tests 테이블 마이그레이션 전이어도 안전하게
+  let brainTestTypes: string[] = [];
+  try {
+    brainTestTypes = await getBrainTestTypes();
+  } catch {
+    // brain_tests 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
 
   // [주의] brain_tests 테이블이 아직 마이그레이션 전이어도(배포 순서상 코드가 먼저
   // 나갈 수 있음) 이 페이지 전체(검사 이력·링크 관리 등)가 깨지지 않도록 별도 처리.
@@ -221,8 +230,8 @@ export default async function ChildDetail({ params }: { params: { id: string } }
         <p className="section-label">뇌기능검사</p>
       </div>
       <div className="space-y-4">
-        <BrainTestForm childId={child.id} />
-        <BrainTestList tests={brainTestsWithUrl} />
+        {canEditBrainTests && <BrainTestForm childId={child.id} testTypeSuggestions={brainTestTypes} />}
+        <BrainTestList tests={brainTestsWithUrl} canEdit={canEditBrainTests} />
       </div>
     </section>
   );

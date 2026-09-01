@@ -1247,7 +1247,21 @@ const ALLOWED_BRAIN_FILE_EXT: Record<string, string> = {
 };
 
 const BRAIN_TEST_SELECT =
-  "id, childId:child_id, testDate:test_date, counselor, fileStoragePath:file_storage_path, fileName:file_name, indicators, opinion, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at";
+  "id, childId:child_id, testDate:test_date, counselor, fileStoragePath:file_storage_path, fileName:file_name, indicators, opinion, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at, " +
+  "testType:test_type, testName:test_name, measuringOrg:measuring_org, measuredBy:measured_by, parentSummary:parent_summary, approvedBy:approved_by, approvedAt:approved_at, status";
+
+/** 8단계 — 검사종류 자동완성용(기존 값 중복 제거, 최신순). getActivityNames()와 동일 패턴 */
+export async function getBrainTestTypes(): Promise<string[]> {
+  const { data, error } = await db()
+    .from("brain_tests")
+    .select("test_type")
+    .not("test_type", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  const types = (data ?? []).map((r: { test_type: string }) => r.test_type);
+  return Array.from(new Set(types));
+}
 
 export async function getBrainTestsByChild(childId: string, opts?: { onlyPublic?: boolean }): Promise<BrainTest[]> {
   let query = db().from("brain_tests").select(BRAIN_TEST_SELECT).eq("child_id", childId).order("test_date", { ascending: false });
@@ -1294,6 +1308,13 @@ export interface BrainTestInput {
   indicators: BrainIndicator[];
   opinion?: string;
   isPublicToParent: boolean;
+  testType?: string;
+  testName?: string;
+  measuringOrg?: string;
+  measuredBy?: string;
+  /** 학부모 공개용 요약 — 있으면 학부모 화면에서 opinion 대신 이걸 보여줌(reportPayload.ts) */
+  parentSummary?: string;
+  status?: BrainTest["status"];
 }
 
 export async function createBrainTest(input: BrainTestInput): Promise<BrainTest> {
@@ -1309,6 +1330,14 @@ export async function createBrainTest(input: BrainTestInput): Promise<BrainTest>
     indicators: input.indicators,
     opinion: input.opinion || null,
     is_public_to_parent: input.isPublicToParent,
+    test_type: input.testType?.trim() || null,
+    test_name: input.testName?.trim() || null,
+    measuring_org: input.measuringOrg?.trim() || null,
+    measured_by: input.measuredBy?.trim() || null,
+    parent_summary: input.parentSummary?.trim() || null,
+    status: input.status || "draft",
+    approved_by: input.status === "approved" ? "관리자" : null,
+    approved_at: input.status === "approved" ? now : null,
     created_at: now,
     updated_at: now,
   };
@@ -1319,9 +1348,13 @@ export async function createBrainTest(input: BrainTestInput): Promise<BrainTest>
   return test;
 }
 
+/** [8단계] status를 'approved'로 바꾸는 순간에만 approvedBy/approvedAt을 자동 기록.
+ * [보안] status는 내부 진행상황 표시일 뿐 학부모 공개 여부(is_public_to_parent)와는
+ * 무관 — 절대 여기서 is_public_to_parent를 함께 바꾸지 않는다(기존 공개 데이터 보호). */
 export async function updateBrainTest(
   id: string,
-  patch: Partial<Omit<BrainTestInput, "childId" | "fileStoragePath" | "fileName">>
+  patch: Partial<Omit<BrainTestInput, "childId" | "fileStoragePath" | "fileName">>,
+  approvedByName?: string
 ): Promise<boolean> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.testDate !== undefined) row.test_date = patch.testDate;
@@ -1329,6 +1362,21 @@ export async function updateBrainTest(
   if (patch.indicators !== undefined) row.indicators = patch.indicators;
   if (patch.opinion !== undefined) row.opinion = patch.opinion || null;
   if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  if (patch.testType !== undefined) row.test_type = patch.testType?.trim() || null;
+  if (patch.testName !== undefined) row.test_name = patch.testName?.trim() || null;
+  if (patch.measuringOrg !== undefined) row.measuring_org = patch.measuringOrg?.trim() || null;
+  if (patch.measuredBy !== undefined) row.measured_by = patch.measuredBy?.trim() || null;
+  if (patch.parentSummary !== undefined) row.parent_summary = patch.parentSummary?.trim() || null;
+  if (patch.status !== undefined) {
+    row.status = patch.status;
+    if (patch.status === "approved") {
+      const existing = await getBrainTest(id);
+      if (existing && !existing.approvedAt) {
+        row.approved_by = approvedByName || "관리자";
+        row.approved_at = new Date().toISOString();
+      }
+    }
+  }
 
   const { data, error } = await db().from("brain_tests").update(row).eq("id", id).select("id");
   if (error) throw error;

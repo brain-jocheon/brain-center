@@ -118,7 +118,14 @@ async function getCenterNewsPhotos(): Promise<ParentPhoto[]> {
 async function getParentBrainTests(childId: string): Promise<ParentBrainTest[]> {
   try {
     const tests = await getBrainTestsByChild(childId, { onlyPublic: true });
-    return tests.map((t) => ({ testDate: t.testDate, indicators: t.indicators, opinion: t.opinion }));
+    // [8단계] parentSummary를 입력해뒀으면 그걸 우선 보여주고, 안 적었으면 기존 opinion 그대로
+    // (기존 검사 데이터는 parentSummary가 없으므로 100% 이전과 동일하게 보임)
+    return tests.map((t) => ({
+      testDate: t.testDate,
+      indicators: t.indicators,
+      opinion: t.parentSummary || t.opinion,
+      testName: t.testName,
+    }));
   } catch {
     return [];
   }

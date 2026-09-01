@@ -203,7 +203,9 @@ export interface BrainTest {
 export interface ParentBrainTest {
   testDate: string;
   indicators: BrainIndicator[];
+  /** parentSummary가 있으면 그 값, 없으면 기존 opinion(reportPayload.ts에서 조립) */
   opinion?: string;
+  testName?: string;
 }
 
 /** 출결 기록 (관리자 전체 뷰) — 하루(아이+날짜)당 한 행 */

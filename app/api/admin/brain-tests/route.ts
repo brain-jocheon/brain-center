@@ -7,7 +7,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { createBrainTest } from "@/lib/data";
-import type { BrainIndicator } from "@/lib/types";
+import type { BrainIndicator, BrainTest } from "@/lib/types";
+
+const STATUS_VALUES: BrainTest["status"][] = [
+  "draft", "uploaded", "extracting", "needs_review", "confirmed", "ai_processing",
+  "ai_drafted", "teacher_reviewed", "pending_approval", "approved", "published", "failed",
+];
 
 export async function POST(req: Request) {
   if (!isFullAdmin(getCurrentActor())) {
@@ -24,6 +29,12 @@ export async function POST(req: Request) {
         indicators?: BrainIndicator[];
         opinion?: string;
         isPublicToParent?: boolean;
+        testType?: string;
+        testName?: string;
+        measuringOrg?: string;
+        measuredBy?: string;
+        parentSummary?: string;
+        status?: string;
       }
     | null;
 
@@ -32,6 +43,9 @@ export async function POST(req: Request) {
   const counselor = body?.counselor?.trim();
   if (!childId || !testDate || !counselor) {
     return NextResponse.json({ message: "검사일과 담당자를 입력해 주세요." }, { status: 400 });
+  }
+  if (body?.status !== undefined && !STATUS_VALUES.includes(body.status as BrainTest["status"])) {
+    return NextResponse.json({ message: "처리 상태 값이 올바르지 않습니다." }, { status: 400 });
   }
 
   const indicators = Array.isArray(body?.indicators)
@@ -49,6 +63,12 @@ export async function POST(req: Request) {
     indicators,
     opinion: body?.opinion?.trim() || undefined,
     isPublicToParent: !!body?.isPublicToParent,
+    testType: body?.testType,
+    testName: body?.testName,
+    measuringOrg: body?.measuringOrg,
+    measuredBy: body?.measuredBy,
+    parentSummary: body?.parentSummary,
+    status: body?.status as BrainTest["status"] | undefined,
   });
 
   return NextResponse.json({ ok: true, test });
