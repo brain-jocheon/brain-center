@@ -3,11 +3,11 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor } from "@/lib/auth";
 import { getCommentTemplates, createCommentTemplate } from "@/lib/data";
 
 export async function GET() {
-  if (!isAdminLoggedIn()) {
+  if (!getCurrentActor()) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
   const templates = await getCommentTemplates();
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  if (!getCurrentActor()) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 

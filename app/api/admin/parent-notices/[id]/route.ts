@@ -3,15 +3,15 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { updateParentNotice, softDeleteParentNotice } from "@/lib/data";
 import type { ParentNoticeAdmin } from "@/lib/types";
 
 const AUDIENCE_TYPES: ParentNoticeAdmin["audienceType"][] = ["all", "status", "program", "weekday", "child"];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -38,8 +38,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 /** 소프트삭제 — deleted_at만 세팅, 행 자체는 남아있어 관리자 실수 삭제도 복구 가능 */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const found = await softDeleteParentNotice(params.id);

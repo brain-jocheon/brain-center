@@ -2,11 +2,12 @@
  * 출결 기록 생성/수정 API (관리자 전용) — 같은 (아이, 날짜)면 upsert로 덮어씀
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { upsertAttendance } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
+import { upsertAttendance, actorCanAccessChild } from "@/lib/data";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 
@@ -28,6 +29,9 @@ export async function POST(req: Request) {
   }
   if (body?.status !== "present" && body?.status !== "absent") {
     return NextResponse.json({ message: "출결 상태가 올바르지 않습니다." }, { status: 400 });
+  }
+  if (!(await actorCanAccessChild(actor, childId))) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const record = await upsertAttendance({

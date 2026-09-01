@@ -3,13 +3,14 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { createMonthlyReport } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
+import { createMonthlyReport, actorCanAccessChild } from "@/lib/data";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
   const month = body?.month?.trim();
   if (!childId || !month || !MONTH_RE.test(month)) {
     return NextResponse.json({ message: "아이와 대상 월(YYYY-MM)을 확인해 주세요." }, { status: 400 });
+  }
+  if (!(await actorCanAccessChild(actor, childId))) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   try {

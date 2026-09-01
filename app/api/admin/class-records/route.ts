@@ -5,14 +5,15 @@
  * 기존 POST /api/admin/photos를 그대로 재호출.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { createClassRecord } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
+import { createClassRecord, actorCanAccessChild } from "@/lib/data";
 import type { ActivityPhoto } from "@/lib/types";
 
 const ACTIVITY_TYPES: ActivityPhoto["activityType"][] = ["class", "craft", "cooking", "neurofeedback", "event", "other"];
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 
@@ -40,6 +41,11 @@ export async function POST(req: Request) {
   }
   if (childIds.length === 0) {
     return NextResponse.json({ message: "참여한 아이를 1명 이상 선택해 주세요." }, { status: 400 });
+  }
+  // [보안] 담당이 아닌 아이가 하나라도 섞여 있으면 전체 거부(IDOR 방지)
+  const accessChecks = await Promise.all(childIds.map((id) => actorCanAccessChild(actor, id)));
+  if (accessChecks.some((ok) => !ok)) {
+    return NextResponse.json({ message: "담당하지 않는 아이가 포함되어 있습니다." }, { status: 403 });
   }
 
   const record = await createClassRecord({

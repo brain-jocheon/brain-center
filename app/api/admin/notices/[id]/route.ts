@@ -2,12 +2,12 @@
  * 공지사항 수정(PATCH)/삭제(DELETE) API (관리자 전용)
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { updateNotice, deleteNotice } from "@/lib/data";
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as { title?: string; body?: string } | null;
@@ -26,8 +26,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const found = await deleteNotice(params.id);

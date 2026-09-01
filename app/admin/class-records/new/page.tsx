@@ -4,7 +4,8 @@
  * 한 번에 등록합니다. 아이별 코멘트는 QuickClassRecordForm에서 오버라이드 가능.
  */
 import Link from "next/link";
-import { getChildren, getActivityNames, getCommentTemplates } from "@/lib/data";
+import { getChildren, getActivityNames, getCommentTemplates, getAssignedChildIds } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
 import type { CommentTemplate } from "@/lib/types";
 import QuickClassRecordForm from "@/components/admin/QuickClassRecordForm";
 
@@ -13,7 +14,15 @@ export const dynamic = "force-dynamic";
 export default async function NewClassRecordPage() {
   const [allChildren, activityNames] = await Promise.all([getChildren(), getActivityNames()]);
 
-  const activeChildren = allChildren
+  // [7단계] 선생님은 담당 아동만 선택 가능 — 서버가 저장 시점에도 다시 한 번 검사함
+  const actor = getCurrentActor();
+  let visibleChildren = allChildren;
+  if (actor?.kind === "staff" && actor.role === "teacher") {
+    const assignedIds = new Set(await getAssignedChildIds(actor.staffId));
+    visibleChildren = allChildren.filter((c) => assignedIds.has(c.id));
+  }
+
+  const activeChildren = visibleChildren
     .filter((c) => c.status === "active")
     .map((c) => ({ id: c.id, name: c.name, grade: c.grade }));
 

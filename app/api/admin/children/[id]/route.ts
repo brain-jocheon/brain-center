@@ -3,14 +3,14 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { deleteChild, getChild, updateChild } from "@/lib/data";
 
 const STATUS_VALUES = ["active", "waiting", "ended"] as const;
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -68,8 +68,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const existing = await getChild(params.id);

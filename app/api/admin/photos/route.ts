@@ -4,14 +4,15 @@
  * 이 라우트가 호출되는 시점엔 이미 클라이언트가 Storage에 파일을 직접 업로드 완료한 상태입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { createActivityPhoto } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
+import { createActivityPhoto, actorCanAccessChild } from "@/lib/data";
 import type { ActivityPhoto } from "@/lib/types";
 
 const ACTIVITY_TYPES: ActivityPhoto["activityType"][] = ["class", "craft", "cooking", "neurofeedback", "event", "other"];
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 
@@ -44,6 +45,14 @@ export async function POST(req: Request) {
   // 특정 아이 태그 없이도 "센터 소식"에만 게시하는 사진은 허용 — 둘 다 없으면 아무 데도 안 보이므로 거부
   if (studentIds.length === 0 && !isPublicToBlog) {
     return NextResponse.json({ message: "사진에 태그할 아이를 선택하거나 센터 소식에 게시해 주세요." }, { status: 400 });
+  }
+  // [보안] 센터 소식 게시는 관리자 전용, 아이 태그는 담당 아이만(IDOR 방지)
+  if (isPublicToBlog && !isFullAdmin(actor)) {
+    return NextResponse.json({ message: "센터 소식 게시는 관리자만 할 수 있습니다." }, { status: 403 });
+  }
+  const accessChecks = await Promise.all(studentIds.map((id) => actorCanAccessChild(actor, id)));
+  if (accessChecks.some((ok) => !ok)) {
+    return NextResponse.json({ message: "담당하지 않는 아이가 포함되어 있습니다." }, { status: 403 });
   }
 
   const photo = await createActivityPhoto({

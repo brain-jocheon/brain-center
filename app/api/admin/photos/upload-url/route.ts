@@ -5,11 +5,12 @@
  * Supabase Storage에 직접 업로드합니다 (Vercel 요청 본문 4.5MB 제한 회피).
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { createPhotoUploadTarget, getChild } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
+import { createPhotoUploadTarget, getChild, actorCanAccessChild } from "@/lib/data";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
   }
 
@@ -28,7 +29,12 @@ export async function POST(req: Request) {
     if (!child) {
       return NextResponse.json({ message: "아동을 찾을 수 없습니다." }, { status: 404 });
     }
+    if (!(await actorCanAccessChild(actor, body.childId))) {
+      return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
+    }
     folderId = body.childId;
+  } else if (!isFullAdmin(actor)) {
+    return NextResponse.json({ message: "센터 소식 게시는 관리자만 할 수 있습니다." }, { status: 403 });
   }
 
   try {

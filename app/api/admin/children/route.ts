@@ -3,12 +3,12 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { createChild } from "@/lib/data";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as

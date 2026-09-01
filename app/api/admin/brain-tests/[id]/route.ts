@@ -2,13 +2,13 @@
  * 뇌기능검사 수정(PATCH)/삭제(DELETE) API (관리자 전용)
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { deleteBrainTest, deleteBrainFile, updateBrainTest } from "@/lib/data";
 import type { BrainIndicator } from "@/lib/types";
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -45,8 +45,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const storagePath = await deleteBrainTest(params.id);

@@ -3,12 +3,17 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { updateChildComment } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
+import { updateChildComment, getChildCommentOwner, actorCanAccessChild } from "@/lib/data";
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  }
+  const childId = await getChildCommentOwner(params.id);
+  if (!childId || !(await actorCanAccessChild(actor, childId))) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as { comment?: string; isPublicToParent?: boolean } | null;

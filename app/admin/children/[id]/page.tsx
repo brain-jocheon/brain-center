@@ -9,8 +9,9 @@ import {
   getChild, getReportsByChild, getMtprisReportsByChild, getAccessTokens,
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
-  getChildCommentsByChild, getMonthlyReportsByChild,
+  getChildCommentsByChild, getMonthlyReportsByChild, actorCanAccessChild,
 } from "@/lib/data";
+import { getCurrentActor } from "@/lib/auth";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
 import AccessLinkPanel from "@/components/admin/AccessLinkPanel";
 import ChildInfoPanel from "@/components/admin/ChildInfoPanel";
@@ -34,6 +35,10 @@ type TimelineItem =
 export default async function ChildDetail({ params }: { params: { id: string } }) {
   const child = await getChild(params.id);
   if (!child) notFound();
+
+  // [7단계/보안] 담당 아동이 아닌 선생님은 URL을 직접 쳐도 볼 수 없어야 함(IDOR 방지)
+  const actor = getCurrentActor();
+  if (!actor || !(await actorCanAccessChild(actor, child.id))) notFound();
 
   const [reports, mtprisReports, tokens, allChildren, photos, activityNames] = await Promise.all([
     getReportsByChild(child.id),

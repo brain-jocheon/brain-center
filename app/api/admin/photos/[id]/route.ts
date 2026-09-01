@@ -3,15 +3,28 @@
  * [보안] middleware.ts는 /api/admin/*을 보호하지 않으므로 이 세션 확인이 유일한 인증 게이트입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
-import { deleteActivityPhoto, deletePhotoFile, updateActivityPhoto } from "@/lib/data";
+import { getCurrentActor, isFullAdmin, type CurrentActor } from "@/lib/auth";
+import { deleteActivityPhoto, deletePhotoFile, updateActivityPhoto, getPhoto, actorCanAccessChild } from "@/lib/data";
 import type { ActivityPhoto } from "@/lib/types";
 
 const ACTIVITY_TYPES: ActivityPhoto["activityType"][] = ["class", "craft", "cooking", "neurofeedback", "event", "other"];
 
+/** 태그된 아이가 전부 담당 범위 안인지(센터소식 전용 사진은 관리자만) */
+async function canAccessPhoto(actor: CurrentActor, photoId: string): Promise<boolean> {
+  const photo = await getPhoto(photoId);
+  if (!photo) return false;
+  if (photo.isPublicToBlog && photo.studentIds.length === 0) return isFullAdmin(actor);
+  const checks = await Promise.all(photo.studentIds.map((id) => actorCanAccessChild(actor, id)));
+  return checks.every(Boolean);
+}
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  }
+  if (!(await canAccessPhoto(actor, params.id))) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -51,8 +64,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
+  const actor = getCurrentActor();
+  if (!actor) {
     return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  }
+  if (!(await canAccessPhoto(actor, params.id))) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const storagePath = await deleteActivityPhoto(params.id);

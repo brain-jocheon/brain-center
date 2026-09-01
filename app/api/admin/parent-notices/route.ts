@@ -4,23 +4,23 @@
  * [주의] 로그인 없이 보이는 공개 홈페이지 공지(app/api/admin/notices)와 완전히 별개입니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { getParentNoticesAdmin, createParentNotice } from "@/lib/data";
 import type { ParentNoticeAdmin } from "@/lib/types";
 
 const AUDIENCE_TYPES: ParentNoticeAdmin["audienceType"][] = ["all", "status", "program", "weekday", "child"];
 
 export async function GET() {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
   const notices = await getParentNoticesAdmin();
   return NextResponse.json({ notices });
 }
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as

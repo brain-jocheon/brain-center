@@ -4,13 +4,13 @@
  * [보안] 평문 비밀번호는 어디에도 저장하지 않습니다 — POST 응답에만 한 번 담아 돌려주고 버립니다.
  */
 import { NextResponse } from "next/server";
-import { generateAccessToken, hashParentPassword, isAdminLoggedIn } from "@/lib/auth";
+import { generateAccessToken, hashParentPassword, getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { createAccessToken, deactivateAccessToken, getAccessTokens, getMtprisReport, getReport } from "@/lib/data";
 import type { AccessToken } from "@/lib/types";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as
@@ -61,8 +61,8 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as { token?: string; active?: boolean } | null;

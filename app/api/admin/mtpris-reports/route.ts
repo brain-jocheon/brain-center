@@ -5,14 +5,14 @@
  *        파일 쓰기가 유지되지 않으므로 운영 전 DB로 전환하세요.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { getMtprisReport, saveMtprisReport } from "@/lib/data";
 import { MAIN_CODES, SUB_CODES } from "@/lib/content/mtpris/types";
 import type { MtprisRawInput } from "@/lib/mtpris/types";
 
 export async function PUT(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as MtprisRawInput | null;

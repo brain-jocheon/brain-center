@@ -4,12 +4,12 @@
  * 아이 개인정보나 활동 사진은 여기(공지사항)가 아니라 "센터 소식 관리"(학부모 전용)에 올려야 합니다.
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { createNotice } from "@/lib/data";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as { title?: string; body?: string } | null;

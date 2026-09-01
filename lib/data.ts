@@ -18,7 +18,9 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff } from "./types";
+import type { CurrentActor } from "./auth";
+import { hashParentPassword } from "./auth";
 import type { MtprisRawInput } from "./mtpris/types";
 import { parseClassDays } from "./classSchedule";
 
@@ -806,6 +808,13 @@ export async function softDeleteClassRecord(id: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
+/** [7단계] 권한검사용 — 이 코멘트가 어느 아이 소속인지만 가볍게 조회 */
+export async function getChildCommentOwner(id: string): Promise<string | null> {
+  const { data, error } = await db().from("child_comments").select("childId:child_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as { childId: string } | null)?.childId ?? null;
+}
+
 export async function updateChildComment(
   id: string,
   patch: Partial<Pick<ChildComment, "comment" | "isPublicToParent">>
@@ -967,6 +976,13 @@ export async function createMonthlyReport(input: MonthlyReportInput): Promise<Mo
   const { data, error: fetchError } = await db().from("monthly_reports").select(MONTHLY_REPORT_SELECT).eq("id", id).maybeSingle();
   if (fetchError) throw fetchError;
   return data as unknown as MonthlyReport;
+}
+
+/** [7단계] 권한검사용 — 이 월간리포트가 어느 아이 소속인지만 가볍게 조회 */
+export async function getMonthlyReportOwner(id: string): Promise<string | null> {
+  const { data, error } = await db().from("monthly_reports").select("childId:child_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as { childId: string } | null)?.childId ?? null;
 }
 
 export async function updateMonthlyReport(
@@ -1393,6 +1409,13 @@ export async function deleteAttendance(id: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
+/** [7단계] 권한검사용 — 이 출결기록이 어느 아이 소속인지만 가볍게 조회 */
+export async function getAttendanceOwner(id: string): Promise<string | null> {
+  const { data, error } = await db().from("attendance_records").select("childId:child_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as { childId: string } | null)?.childId ?? null;
+}
+
 /* ---------------- 보강 희망일 요청 ---------------- */
 
 const MAKEUP_REQUEST_SELECT =
@@ -1612,6 +1635,147 @@ export async function countRecentConsultationsByIp(ip: string | null, windowMinu
     .gte("created_at", since);
   if (error) throw error;
   return count ?? 0;
+}
+
+/* ---------------- 7단계: 선생님/스태프 계정 (RBAC) ---------------- */
+
+const STAFF_SELECT =
+  "id, name, phone, role, active, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+
+export interface StaffInput {
+  name: string;
+  phone?: string;
+  password: string;
+  role: Staff["role"];
+}
+
+export async function createStaff(input: StaffInput): Promise<Staff> {
+  const id = `staff_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const passwordHash = await hashParentPassword(input.password); // 순수 bcrypt 래퍼 재사용(이름만 "학부모")
+  const row = {
+    id,
+    name: input.name,
+    phone: input.phone || null,
+    password_hash: passwordHash,
+    role: input.role,
+    active: true,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("staff").insert(row);
+  if (error) throw error;
+  const { data } = await db().from("staff").select(STAFF_SELECT).eq("id", id).maybeSingle();
+  return data as unknown as Staff;
+}
+
+/** 관리자 전용 — 전체 목록(소프트삭제 제외, 이름순) */
+export async function getStaffList(): Promise<Staff[]> {
+  const { data, error } = await db().from("staff").select(STAFF_SELECT).is("deleted_at", null).order("name");
+  if (error) throw error;
+  return (data ?? []) as unknown as Staff[];
+}
+
+export async function getStaffById(id: string): Promise<Staff | null> {
+  const { data, error } = await db().from("staff").select(STAFF_SELECT).eq("id", id).is("deleted_at", null).maybeSingle();
+  if (error) throw error;
+  return (data as unknown as Staff) ?? null;
+}
+
+/** 로그인용 — phone은 부분 유니크 인덱스라 있으면 항상 1건 이하 */
+export async function getStaffByPhone(phone: string): Promise<(Staff & { passwordHash: string }) | null> {
+  const { data, error } = await db()
+    .from("staff")
+    .select(`${STAFF_SELECT}, passwordHash:password_hash`)
+    .eq("phone", phone)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as unknown as (Staff & { passwordHash: string })) ?? null;
+}
+
+export async function setStaffActive(id: string, active: boolean): Promise<boolean> {
+  const { data, error } = await db()
+    .from("staff")
+    .update({ active, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 실패한 선생님 로그인 시도 기록 — 스키마 변경 없이 audit_logs.after에 ip를 담아 재사용 */
+export async function logFailedStaffLogin(ip: string | null): Promise<void> {
+  try {
+    await db()
+      .from("audit_logs")
+      .insert({
+        id: `audit_${randomBytes(6).toString("hex")}`,
+        action: "staff_login_failed",
+        target_table: "staff",
+        after: { ip },
+      });
+  } catch {
+    // 기록 실패가 로그인 흐름을 막으면 안 됨
+  }
+}
+
+/** countRecentFailedAttempts(access_logs 기준)와 동일한 원리, audit_logs 기준 */
+export async function countRecentFailedStaffLogins(ip: string | null, windowMinutes: number): Promise<number> {
+  if (!ip) return 0;
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const { data, error } = await db()
+    .from("audit_logs")
+    .select("after")
+    .eq("action", "staff_login_failed")
+    .gte("created_at", since);
+  if (error) throw error;
+  return (data ?? []).filter((r: { after: { ip?: string } | null }) => r.after?.ip === ip).length;
+}
+
+/* ---- 담당 아동 배정 ---- */
+
+export async function assignChildToStaff(childId: string, staffId: string): Promise<void> {
+  const { error } = await db()
+    .from("child_staff_assignments")
+    .upsert({ child_id: childId, staff_id: staffId }, { onConflict: "child_id,staff_id" });
+  if (error) throw error;
+}
+
+export async function unassignChildFromStaff(childId: string, staffId: string): Promise<void> {
+  const { error } = await db().from("child_staff_assignments").delete().eq("child_id", childId).eq("staff_id", staffId);
+  if (error) throw error;
+}
+
+export async function getAssignedChildIds(staffId: string): Promise<string[]> {
+  const { data, error } = await db().from("child_staff_assignments").select("childId:child_id").eq("staff_id", staffId);
+  if (error) throw error;
+  return (data ?? []).map((r: { childId: string }) => r.childId);
+}
+
+export async function getAssignedStaffIds(childId: string): Promise<string[]> {
+  const { data, error } = await db().from("child_staff_assignments").select("staffId:staff_id").eq("child_id", childId);
+  if (error) throw error;
+  return (data ?? []).map((r: { staffId: string }) => r.staffId);
+}
+
+export async function isChildAssignedToStaff(staffId: string, childId: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("child_staff_assignments")
+    .select("child_id")
+    .eq("staff_id", staffId)
+    .eq("child_id", childId)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+/** 이 API/페이지 전반에서 쓰는 단일 권한 판단 지점 — 전체관리자는 항상 true,
+ * 선생님은 담당 아동일 때만 true. [보안] 이 함수를 거치지 않고 childId 기반
+ * 데이터를 다루는 API가 없어야 함(아래 각 라우트에서 재사용). */
+export async function actorCanAccessChild(actor: CurrentActor, childId: string): Promise<boolean> {
+  if (actor.kind === "legacy_admin" || actor.role === "admin") return true;
+  return isChildAssignedToStaff(actor.staffId, childId);
 }
 
 /* ---------------- 관리자 대시보드 요약 ---------------- */

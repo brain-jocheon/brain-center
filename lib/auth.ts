@@ -87,3 +87,50 @@ export function isAdminLoggedIn(): boolean {
 }
 
 export const ADMIN_SESSION_COOKIE = SESSION_COOKIE;
+
+/* ---------------- 7단계: 선생님 계정 세션 (기존 관리자 세션과 완전히 병행) ----------------
+ * [보안] 위의 createSessionToken/verifySessionToken/isAdminLoggedIn(관리자 전용,
+ * bc_admin_session)은 이 블록에서 전혀 건드리지 않습니다 — 기존 관리자 로그인은
+ * 그대로 동작합니다. 선생님/스태프 로그인은 별도 쿠키(bc_staff_session)로 병행 추가.
+ */
+
+export const STAFF_SESSION_COOKIE = "bc_staff_session";
+export type StaffRole = "admin" | "teacher";
+
+/** payload: "만료시각:staffId:role" — staffId는 randomBytes 기반이라 ':' 문자를 포함하지 않음 */
+export function createStaffSessionToken(staffId: string, role: StaffRole): string {
+  const expires = Date.now() + 1000 * 60 * 60 * 8; // 8시간 — 관리자 세션과 동일
+  const payload = `${expires}:${staffId}:${role}`;
+  const sig = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  return `${payload}.${sig}`;
+}
+
+export function verifyStaffSessionToken(token: string | undefined): { staffId: string; role: StaffRole } | null {
+  if (!token) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  if (!safeEqual(sig, expected)) return null;
+  const [expiresStr, staffId, role] = payload.split(":");
+  if (!expiresStr || !staffId || !role) return null;
+  if (Number(expiresStr) <= Date.now()) return null;
+  if (role !== "admin" && role !== "teacher") return null;
+  return { staffId, role };
+}
+
+/** 현재 요청의 접근 주체 — 기존 관리자 로그인이면 legacy_admin(전체 권한, 기존과 동일),
+ * 아니면 선생님/스태프 세션을 확인. 이후 모든 페이지·API의 권한 판단 기준점. */
+export type CurrentActor = { kind: "legacy_admin" } | { kind: "staff"; staffId: string; role: StaffRole };
+
+export function getCurrentActor(): CurrentActor | null {
+  if (isAdminLoggedIn()) return { kind: "legacy_admin" };
+  const staff = verifyStaffSessionToken(cookies().get(STAFF_SESSION_COOKIE)?.value);
+  if (staff) return { kind: "staff", staffId: staff.staffId, role: staff.role };
+  return null;
+}
+
+/** legacy_admin이거나 staff.role==='admin'이면 전체 관리자 권한 */
+export function isFullAdmin(actor: CurrentActor | null): boolean {
+  if (!actor) return false;
+  return actor.kind === "legacy_admin" || actor.role === "admin";
+}

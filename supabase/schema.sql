@@ -664,3 +664,8 @@ grant select, insert, update, delete on
   staff, child_staff_assignments, child_traits, eeg_training_sessions,
   ai_generation_logs, audit_logs, eeg_test_templates
 to service_role;
+
+-- =====================================================================
+-- 7단계: RBAC(선생님 계정) — staff.phone을 로그인 식별자로 사용
+-- =====================================================================
+create unique index if not exists staff_phone_idx on staff(phone) where phone is not null;

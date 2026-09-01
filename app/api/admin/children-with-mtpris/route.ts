@@ -4,15 +4,15 @@
  */
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { createChild, saveMtprisReport } from "@/lib/data";
 import { MAIN_CODES, SUB_CODES } from "@/lib/content/mtpris/types";
 import type { MainCode, SubCode } from "@/lib/content/mtpris/types";
 import type { MtprisScores } from "@/lib/mtpris/types";
 
 export async function POST(req: Request) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as

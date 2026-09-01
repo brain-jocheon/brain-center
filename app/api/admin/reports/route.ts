@@ -9,14 +9,14 @@
  * 운영 배포 전 반드시 데이터베이스로 전환하세요. (lib/data.ts 참고)
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { getReport, saveReport } from "@/lib/data";
 import type { Report } from "@/lib/types";
 
 export async function PUT(req: Request) {
   // [보안] 관리자 세션 확인 — 없으면 거부
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as Report | null;

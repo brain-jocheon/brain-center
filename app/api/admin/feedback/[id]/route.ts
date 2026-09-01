@@ -2,15 +2,15 @@
  * 학부모 문의/건의사항 상태 변경 · 답변 작성 (관리자 전용)
  */
 import { NextResponse } from "next/server";
-import { isAdminLoggedIn } from "@/lib/auth";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { reviewParentFeedback } from "@/lib/data";
 import type { ParentFeedback } from "@/lib/types";
 
 const VALID_STATUS: ParentFeedback["status"][] = ["pending", "reviewed", "answered"];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  if (!isAdminLoggedIn()) {
-    return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  if (!isFullAdmin(getCurrentActor())) {
+    return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => null)) as { status?: string; adminReply?: string } | null;
