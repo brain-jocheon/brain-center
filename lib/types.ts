@@ -369,3 +369,26 @@ export interface ParentFeedback {
   createdAt: string;
   reviewedAt?: string;
 }
+
+/** 공개 홈페이지에서 로그인 없이 제출되는 신규 상담 신청 — parent_feedback(재원 중
+ * 학부모 전용 문의)과는 완전히 별개. ip는 관리자 화면에는 안 보여주고 스팸 방지
+ * 레이트리밋에만 씀. */
+export interface Consultation {
+  id: string;
+  guardianName: string;
+  guardianPhone: string;
+  childName: string;
+  childAgeGrade?: string;
+  concern?: string;
+  isExistingMember: boolean;
+  desiredProgram?: string;
+  desiredDatetime?: string;
+  referralSource?: string;
+  additionalMessage?: string;
+  consentAt: string;
+  ip?: string;
+  status: "new" | "contact_scheduled" | "consult_scheduled" | "consult_done" | "enrolled" | "on_hold" | "closed";
+  adminMemo?: string;
+  createdAt: string;
+  updatedAt: string;
+}

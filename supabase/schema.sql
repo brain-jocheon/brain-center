@@ -454,3 +454,39 @@ create table if not exists parent_notice_reads (
 alter table parent_notices enable row level security;
 alter table parent_notice_reads enable row level security;
 grant select, insert, update, delete on parent_notices, parent_notice_reads to service_role;
+
+-- =====================================================================
+-- 4단계: 상담 신청 사전설문 + 관리자 처리 파이프라인
+-- ---------------------------------------------------------------------
+-- 공개 홈페이지에서 로그인 없이 제출되는 신규 상담 신청입니다. 재원 중인
+-- 학부모 전용 문의(parent_feedback)와는 목적이 다른 별개 테이블입니다.
+-- 이 앱에서 처음으로 완전 공개된 쓰기 API라 ip를 함께 저장해 레이트리밋에
+-- 씁니다(access_logs의 실패 카운트 레이트리밋과 같은 원리).
+-- =====================================================================
+
+create table if not exists consultations (
+  id text primary key,
+  guardian_name text not null,
+  guardian_phone text not null,
+  child_name text not null,
+  child_age_grade text,
+  concern text,
+  is_existing_member boolean not null default false,
+  desired_program text,
+  desired_datetime text,
+  referral_source text,
+  additional_message text,
+  consent_at timestamptz not null default now(),
+  ip text,
+  status text not null default 'new' check (status in (
+    'new', 'contact_scheduled', 'consult_scheduled', 'consult_done', 'enrolled', 'on_hold', 'closed'
+  )),
+  admin_memo text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists consultations_created_idx on consultations(created_at desc);
+create index if not exists consultations_status_idx on consultations(status);
+
+alter table consultations enable row level security;
+grant select, insert, update, delete on consultations to service_role;

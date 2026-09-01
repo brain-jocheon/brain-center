@@ -3,7 +3,7 @@
  * (미들웨어가 로그인 여부를 검사하므로 이 페이지에 도달하면 이미 인증됨)
  */
 import Link from "next/link";
-import { getChildren, getReportsByChild, getMtprisReportsByChild, countPendingMakeupRequests, countPendingParentFeedback, getDashboardSummary } from "@/lib/data";
+import { getChildren, getReportsByChild, getMtprisReportsByChild, countPendingMakeupRequests, countPendingParentFeedback, countPendingConsultations, getDashboardSummary } from "@/lib/data";
 import type { DashboardSummary } from "@/lib/types";
 import LogoutButton from "@/components/LogoutButton";
 import AddChildForm from "@/components/admin/AddChildForm";
@@ -38,6 +38,12 @@ export default async function AdminHome() {
   } catch {
     // parent_feedback 테이블 마이그레이션 전 — 0으로 대체
   }
+  let pendingConsultationCount = 0;
+  try {
+    pendingConsultationCount = await countPendingConsultations();
+  } catch {
+    // consultations 테이블 마이그레이션 전 — 0으로 대체
+  }
 
   let summary: DashboardSummary = {
     activeCount: 0, waitingCount: 0, endedCount: 0, newThisWeek: 0, todayClassCount: 0, recentPhotosCount: 0,
@@ -56,6 +62,14 @@ export default async function AdminHome() {
           <h1 className="text-lg font-bold">아동 목록</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/consultations" className="btn-ghost text-sm relative">
+            상담 신청
+            {pendingConsultationCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-apricot-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {pendingConsultationCount}
+              </span>
+            )}
+          </Link>
           <Link href="/admin/makeup-requests" className="btn-ghost text-sm relative">
             보강 요청
             {pendingMakeupCount > 0 && (

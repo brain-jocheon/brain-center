@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation } from "./types";
 import type { MtprisRawInput } from "./mtpris/types";
 import { parseClassDays } from "./classSchedule";
 
@@ -1528,6 +1528,90 @@ export async function reviewParentFeedback(
   if (error) throw error;
   const { data } = await db().from("parent_feedback").select(PARENT_FEEDBACK_SELECT).eq("id", id).maybeSingle();
   return (data as unknown as ParentFeedback) ?? null;
+}
+
+/* ---------------- 상담 신청 (신규 방문자, 공개 홈페이지) ---------------- */
+// [주의] parent_feedback(재원 중 학부모 전용 문의)과 완전히 별개입니다.
+
+const CONSULTATION_SELECT =
+  "id, guardianName:guardian_name, guardianPhone:guardian_phone, childName:child_name, childAgeGrade:child_age_grade, concern, isExistingMember:is_existing_member, desiredProgram:desired_program, desiredDatetime:desired_datetime, referralSource:referral_source, additionalMessage:additional_message, consentAt:consent_at, ip, status, adminMemo:admin_memo, createdAt:created_at, updatedAt:updated_at";
+
+export interface ConsultationInput {
+  guardianName: string;
+  guardianPhone: string;
+  childName: string;
+  childAgeGrade?: string;
+  concern?: string;
+  isExistingMember: boolean;
+  desiredProgram?: string;
+  desiredDatetime?: string;
+  referralSource?: string;
+  additionalMessage?: string;
+  ip?: string;
+}
+
+export async function createConsultation(input: ConsultationInput): Promise<Consultation> {
+  const id = `cons_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    guardian_name: input.guardianName,
+    guardian_phone: input.guardianPhone,
+    child_name: input.childName,
+    child_age_grade: input.childAgeGrade || null,
+    concern: input.concern || null,
+    is_existing_member: input.isExistingMember,
+    desired_program: input.desiredProgram || null,
+    desired_datetime: input.desiredDatetime || null,
+    referral_source: input.referralSource || null,
+    additional_message: input.additionalMessage || null,
+    consent_at: now,
+    ip: input.ip || null,
+    status: "new" as const,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("consultations").insert(row);
+  if (error) throw error;
+  const { data } = await db().from("consultations").select(CONSULTATION_SELECT).eq("id", id).maybeSingle();
+  return data as unknown as Consultation;
+}
+
+export async function getConsultations(): Promise<Consultation[]> {
+  const { data, error } = await db().from("consultations").select(CONSULTATION_SELECT).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as Consultation[];
+}
+
+export async function countPendingConsultations(): Promise<number> {
+  const { count, error } = await db().from("consultations").select("id", { count: "exact", head: true }).eq("status", "new");
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function updateConsultation(
+  id: string,
+  patch: { status?: Consultation["status"]; adminMemo?: string }
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.adminMemo !== undefined) row.admin_memo = patch.adminMemo.trim() || null;
+  const { data, error } = await db().from("consultations").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 스팸/과다제출 방지 — countRecentFailedAttempts와 동일한 형태 */
+export async function countRecentConsultationsByIp(ip: string | null, windowMinutes: number): Promise<number> {
+  if (!ip) return 0;
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const { count, error } = await db()
+    .from("consultations")
+    .select("id", { count: "exact", head: true })
+    .eq("ip", ip)
+    .gte("created_at", since);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 /* ---------------- 관리자 대시보드 요약 ---------------- */
