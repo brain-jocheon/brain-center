@@ -490,3 +490,177 @@ create index if not exists consultations_status_idx on consultations(status);
 
 alter table consultations enable row level security;
 grant select, insert, update, delete on consultations to service_role;
+
+-- =====================================================================
+-- 6단계: 뇌파검사·훈련기록·역할체계(RBAC)·AI 연동 — 스키마 기반 작업
+-- ---------------------------------------------------------------------
+-- 이 블록은 화면/API 없이 스키마와 타입만 먼저 준비하는 단계입니다.
+-- 기존 brain_tests/class_records/child_comments를 대체하지 않고
+-- 컬럼만 추가(add column if not exists)하므로 기존 데이터는 전혀
+-- 영향받지 않습니다. staff 로그인은 7단계에서 기존 관리자 로그인과
+-- "병행"으로 붙일 예정 — 지금은 테이블만 존재하고 아무도 로그인하지 않음.
+-- =====================================================================
+
+-- ---- brain_tests 확장: 검사종류/측정기관/AI해석/승인/공개용요약 ----
+alter table brain_tests add column if not exists test_type text;
+alter table brain_tests add column if not exists test_name text;
+alter table brain_tests add column if not exists measuring_org text;
+alter table brain_tests add column if not exists measured_by text;
+-- 원본에서 추출한 구조화 데이터(선생님 확인 전). 확인된 핵심 수치는 기존 indicators에 반영.
+alter table brain_tests add column if not exists raw_extracted jsonb;
+alter table brain_tests add column if not exists extraction_confidence text;
+alter table brain_tests add column if not exists teacher_confirmed_at timestamptz;
+alter table brain_tests add column if not exists ai_interpretation jsonb;
+alter table brain_tests add column if not exists final_interpretation text;
+alter table brain_tests add column if not exists parent_summary text;
+alter table brain_tests add column if not exists approved_by text;
+alter table brain_tests add column if not exists approved_at timestamptz;
+-- 동일 파일 중복 업로드 감지용
+alter table brain_tests add column if not exists source_file_hash text;
+alter table brain_tests add column if not exists status text not null default 'draft' check (status in (
+  'draft', 'uploaded', 'extracting', 'needs_review', 'confirmed', 'ai_processing',
+  'ai_drafted', 'teacher_reviewed', 'pending_approval', 'approved', 'published', 'failed'
+));
+create index if not exists brain_tests_status_idx on brain_tests(status);
+create index if not exists brain_tests_source_hash_idx on brain_tests(source_file_hash);
+
+-- ---- class_records 확장: 수업목표/참여도 ----
+alter table class_records add column if not exists lesson_goal text;
+alter table class_records add column if not exists participation text;
+
+-- ---- child_comments 확장: 잘한점/어려운점/관찰메모/AI 3분할 초안 ----
+alter table child_comments add column if not exists strengths_note text;
+alter table child_comments add column if not exists difficulties_note text;
+alter table child_comments add column if not exists teacher_memo text;
+-- AI 3분할 초안: 내부용 상세기록 / 학부모용 코멘트 / 다음 수업 지도방향
+alter table child_comments add column if not exists ai_draft_detail text;
+alter table child_comments add column if not exists ai_draft_parent text;
+alter table child_comments add column if not exists ai_draft_guidance text;
+alter table child_comments add column if not exists ai_generated_at timestamptz;
+alter table child_comments add column if not exists ai_model text;
+alter table child_comments add column if not exists final_source text check (final_source is null or final_source in ('manual', 'ai_edited'));
+
+-- ---- staff: 선생님/관리자 계정 (기존 단일 관리자 로그인과 "병행", 대체 아님) ----
+create table if not exists staff (
+  id text primary key,
+  name text not null,
+  phone text,
+  password_hash text not null,
+  role text not null check (role in ('admin', 'teacher')),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists staff_role_idx on staff(role);
+
+-- ---- child_staff_assignments: 담당 아동 배정 ----
+create table if not exists child_staff_assignments (
+  child_id text not null references children(id) on delete cascade,
+  staff_id text not null references staff(id) on delete cascade,
+  assigned_at timestamptz not null default now(),
+  primary key (child_id, staff_id)
+);
+create index if not exists child_staff_assignments_staff_idx on child_staff_assignments(staff_id);
+
+-- ---- child_traits: 아동 특성 (AI 참고용) ----
+-- ai_include_fields: 이 중 실제로 AI에 전송할 항목만 관리자가 선택(화이트리스트).
+-- 기본값 빈 배열 = "AI에 아무것도 안 보냄"이 가장 안전한 기본값.
+create table if not exists child_traits (
+  child_id text primary key references children(id) on delete cascade,
+  temperament text,
+  strengths text,
+  weaknesses text,
+  cautions text,
+  learning_style text,
+  emotional_behavior text,
+  counseling_goal text,
+  teacher_memo text,
+  ai_guidance_note text,
+  ai_include_fields text[] not null default '{}',
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+
+-- ---- eeg_training_sessions: 뇌파훈련 기록(검사와 별도, 매회 훈련) ----
+-- 숫자 없는 항목은 0으로 채우지 않고 null 유지(화면에서 "값 없음"으로 표시).
+create table if not exists eeg_training_sessions (
+  id text primary key,
+  child_id text not null references children(id) on delete cascade,
+  session_date date not null,
+  duration_minutes integer,
+  training_mode text,
+  training_stage text,
+  equipment text,
+  key_metrics jsonb,
+  condition_note text,
+  engagement_note text,
+  observation text,
+  special_note text,
+  staff_id text references staff(id) on delete set null,
+  parent_comment text,
+  is_public_to_parent boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists eeg_training_sessions_child_date_idx on eeg_training_sessions(child_id, session_date desc);
+
+-- ---- ai_generation_logs: AI 호출 이력(비용·모델·성공여부, 개인정보는 해시만) ----
+create table if not exists ai_generation_logs (
+  id text primary key,
+  feature text not null check (feature in ('class_record', 'eeg_interpretation')),
+  target_id text not null,
+  staff_id text references staff(id) on delete set null,
+  model text,
+  prompt_version text,
+  input_summary_hash text,
+  status text not null check (status in ('pending', 'success', 'failed')),
+  error_message text,
+  tokens_used integer,
+  created_at timestamptz not null default now()
+);
+create index if not exists ai_generation_logs_target_idx on ai_generation_logs(target_id);
+
+-- ---- audit_logs: 관리자/선생님 작업 이력 ----
+create table if not exists audit_logs (
+  id text primary key,
+  actor_staff_id text references staff(id) on delete set null,
+  action text not null,
+  target_table text not null,
+  target_id text,
+  before jsonb,
+  after jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists audit_logs_target_idx on audit_logs(target_table, target_id);
+create index if not exists audit_logs_created_idx on audit_logs(created_at desc);
+
+-- ---- eeg_test_templates: 검사종류별 항목매핑/기준범위/AI지침(관리자 확장 가능) ----
+-- direction이 'none'이면 기준이 없다는 뜻 — 화면에서 증감만 표시하고 좋다/나쁘다 판정 금지.
+create table if not exists eeg_test_templates (
+  id text primary key,
+  test_type text not null,
+  indicator_key text not null,
+  indicator_label text not null,
+  direction text not null default 'none' check (direction in ('higher_better', 'lower_better', 'none')),
+  normal_range_min numeric,
+  normal_range_max numeric,
+  ai_instruction text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (test_type, indicator_key)
+);
+create index if not exists eeg_test_templates_type_idx on eeg_test_templates(test_type);
+
+alter table staff enable row level security;
+alter table child_staff_assignments enable row level security;
+alter table child_traits enable row level security;
+alter table eeg_training_sessions enable row level security;
+alter table ai_generation_logs enable row level security;
+alter table audit_logs enable row level security;
+alter table eeg_test_templates enable row level security;
+grant select, insert, update, delete on
+  staff, child_staff_assignments, child_traits, eeg_training_sessions,
+  ai_generation_logs, audit_logs, eeg_test_templates
+to service_role;

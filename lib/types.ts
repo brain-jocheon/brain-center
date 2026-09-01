@@ -158,7 +158,15 @@ export interface BrainIndicator {
   value: string;
 }
 
-/** 뇌기능검사 (관리자 전체 뷰) — 원본 파일은 보관용, 실제 해석은 상담사가 직접 입력 */
+/** 뇌기능검사(=뇌파검사) 처리 상태 — 6단계에서 스키마만 준비, 실제 화면 반영은 8단계 이후 */
+export type BrainTestStatus =
+  | "draft" | "uploaded" | "extracting" | "needs_review" | "confirmed" | "ai_processing"
+  | "ai_drafted" | "teacher_reviewed" | "pending_approval" | "approved" | "published" | "failed";
+
+/** 뇌기능검사 (관리자 전체 뷰) — 원본 파일은 보관용, 실제 해석은 상담사가 직접 입력.
+ * [주의] 6단계에서 추가된 필드(testType 이하)는 스키마·타입만 준비된 상태이며, 기존
+ * lib/data.ts의 SELECT/CRUD 함수는 아직 이 필드들을 다루지 않음(8단계 이후 반영 예정) —
+ * 전부 optional로 둬서 기존 코드와 완전히 호환됨. */
 export interface BrainTest {
   id: string;
   childId: string;
@@ -172,6 +180,23 @@ export interface BrainTest {
   isPublicToParent: boolean;
   createdAt: string;
   updatedAt: string;
+  /** 검사 종류 키(예: 'panaxtos_eeg') — 검사 템플릿(EegTestTemplate)과 매칭 */
+  testType?: string;
+  testName?: string;
+  measuringOrg?: string;
+  measuredBy?: string;
+  /** 파일에서 추출한 원본 구조화 데이터(선생님 확인 전) */
+  rawExtracted?: Record<string, unknown>;
+  extractionConfidence?: string;
+  teacherConfirmedAt?: string;
+  aiInterpretation?: Record<string, unknown>;
+  finalInterpretation?: string;
+  /** 학부모 공개용 요약 — is_public_to_parent와 별개로, 공개 시 실제 보여줄 문구 */
+  parentSummary?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  sourceFileHash?: string;
+  status?: BrainTestStatus;
 }
 
 /** 학부모 화면에 내려가는 뇌기능검사 요약 — 원본 파일 없이 지표·의견만 */
@@ -274,10 +299,15 @@ export interface ClassRecord {
   updatedAt: string;
   deletedAt?: string | null;
   childIds: string[];
+  /** 6단계 추가 — 기존 lib/data.ts는 아직 안 다룸(10단계에서 반영) */
+  lessonGoal?: string;
+  participation?: string;
 }
 
 /** 아이별 코멘트 오버라이드(관리자 전체 뷰) — comment가 비어있으면 화면에서
- * 소속 class_records.comment를 그대로 보여줌 */
+ * 소속 class_records.comment를 그대로 보여줌
+ * [주의] 6단계 추가 필드(strengthsNote 이하)는 스키마·타입만 준비된 상태 — 10단계(AI
+ * 수업기록)에서 lib/data.ts CRUD와 화면에 실제로 연결 예정. */
 export interface ChildComment {
   id: string;
   classRecordId: string;
@@ -288,6 +318,18 @@ export interface ChildComment {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  strengthsNote?: string;
+  difficultiesNote?: string;
+  teacherMemo?: string;
+  /** AI 3분할 초안: 내부용 상세기록 */
+  aiDraftDetail?: string;
+  /** AI 3분할 초안: 학부모용 코멘트 */
+  aiDraftParent?: string;
+  /** AI 3분할 초안: 다음 수업 지도 방향 */
+  aiDraftGuidance?: string;
+  aiGeneratedAt?: string;
+  aiModel?: string;
+  finalSource?: "manual" | "ai_edited";
 }
 
 /** 학부모 화면에 내려가는 코멘트 — 공개로 설정된 것만, 관리자 전용 필드 없음 */
@@ -389,6 +431,116 @@ export interface Consultation {
   ip?: string;
   status: "new" | "contact_scheduled" | "consult_scheduled" | "consult_done" | "enrolled" | "on_hold" | "closed";
   adminMemo?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* =====================================================================
+ * 6단계: 뇌파검사·훈련기록·역할체계(RBAC)·AI 연동 — 신규 타입
+ * ---------------------------------------------------------------------
+ * 이 아래 타입들은 스키마만 준비된 상태입니다. 로그인·화면·API 연결은
+ * 7단계(RBAC) 이후 순서대로 진행됩니다 — lib/data.ts에 아직 이 타입들을
+ * 다루는 함수가 없습니다.
+ * ===================================================================== */
+
+/** 선생님/관리자 계정 — 기존 단일 관리자 로그인(ADMIN_PASSWORD)과 병행되며 대체하지 않음 */
+export interface Staff {
+  id: string;
+  name: string;
+  phone?: string;
+  role: "admin" | "teacher";
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+/** 아이 담당 선생님 배정 */
+export interface ChildStaffAssignment {
+  childId: string;
+  staffId: string;
+  assignedAt: string;
+}
+
+/** 아동 특성 — AI 수업기록/검사해석에 참고할 정보. aiIncludeFields에 넣은 항목만
+ * 실제로 AI에 전송됨(화이트리스트 방식, 기본값 빈 배열 = 아무것도 안 보냄). */
+export interface ChildTraits {
+  childId: string;
+  temperament?: string;
+  strengths?: string;
+  weaknesses?: string;
+  cautions?: string;
+  learningStyle?: string;
+  emotionalBehavior?: string;
+  counselingGoal?: string;
+  teacherMemo?: string;
+  aiGuidanceNote?: string;
+  /** ChildTraits의 키 이름 중 AI에 전송을 허용한 필드 목록 (예: ["strengths", "learningStyle"]) */
+  aiIncludeFields: string[];
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+/** 뇌파훈련 기록(검사와 별도, 매회 진행) — 숫자 없는 항목은 null(0으로 채우지 않음) */
+export interface EegTrainingSession {
+  id: string;
+  childId: string;
+  sessionDate: string;
+  durationMinutes?: number;
+  trainingMode?: string;
+  trainingStage?: string;
+  equipment?: string;
+  keyMetrics?: Record<string, number | string | null>;
+  conditionNote?: string;
+  engagementNote?: string;
+  observation?: string;
+  specialNote?: string;
+  staffId?: string;
+  parentComment?: string;
+  isPublicToParent: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+/** AI 호출 이력 — 이름/생년월일 등은 저장하지 않고 해시만(개인정보 최소화) */
+export interface AiGenerationLog {
+  id: string;
+  feature: "class_record" | "eeg_interpretation";
+  targetId: string;
+  staffId?: string;
+  model?: string;
+  promptVersion?: string;
+  inputSummaryHash?: string;
+  status: "pending" | "success" | "failed";
+  errorMessage?: string;
+  tokensUsed?: number;
+  createdAt: string;
+}
+
+/** 관리자/선생님 작업 감사로그 */
+export interface AuditLog {
+  id: string;
+  actorStaffId?: string;
+  action: string;
+  targetTable: string;
+  targetId?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** 검사종류별 항목매핑/기준범위/AI지침 — 관리자가 설정·확장.
+ * direction이 'none'이면 기준이 없다는 뜻 — 화면에서 증감만 표시하고 좋다/나쁘다 판정 금지. */
+export interface EegTestTemplate {
+  id: string;
+  testType: string;
+  indicatorKey: string;
+  indicatorLabel: string;
+  direction: "higher_better" | "lower_better" | "none";
+  normalRangeMin?: number;
+  normalRangeMax?: number;
+  aiInstruction?: string;
   createdAt: string;
   updatedAt: string;
 }
