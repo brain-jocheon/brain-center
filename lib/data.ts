@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession } from "./types";
 import type { CurrentActor } from "./auth";
 import { hashParentPassword } from "./auth";
 import type { MtprisRawInput } from "./mtpris/types";
@@ -1043,6 +1043,156 @@ export async function getPublicMonthlyReports(childId: string): Promise<ParentMo
     homeGuidance: r.homeGuidance,
     nextMonthGoals: r.nextMonthGoals,
   }));
+}
+
+/* ---------------- 9단계: 아동 특성 (child_traits, 아동당 1행) ---------------- */
+
+const CHILD_TRAITS_SELECT =
+  "childId:child_id, temperament, strengths, weaknesses, cautions, learningStyle:learning_style, emotionalBehavior:emotional_behavior, counselingGoal:counseling_goal, teacherMemo:teacher_memo, aiGuidanceNote:ai_guidance_note, aiIncludeFields:ai_include_fields, updatedAt:updated_at, updatedBy:updated_by";
+
+export interface ChildTraitsPatch {
+  temperament?: string;
+  strengths?: string;
+  weaknesses?: string;
+  cautions?: string;
+  learningStyle?: string;
+  emotionalBehavior?: string;
+  counselingGoal?: string;
+  teacherMemo?: string;
+  aiGuidanceNote?: string;
+  /** [보안] 이 필드는 API 라우트에서 isFullAdmin(actor)일 때만 patch에 포함시켜야 함 */
+  aiIncludeFields?: string[];
+}
+
+export async function getChildTraits(childId: string): Promise<ChildTraits | null> {
+  const { data, error } = await db().from("child_traits").select(CHILD_TRAITS_SELECT).eq("child_id", childId).maybeSingle();
+  if (error) throw error;
+  return (data as unknown as ChildTraits) ?? null;
+}
+
+/** 아동당 1행 — 없으면 새로 만들고 있으면 보낸 필드만 덮어씀(onConflict: child_id) */
+export async function upsertChildTraits(childId: string, patch: ChildTraitsPatch, updatedBy?: string): Promise<ChildTraits> {
+  const row: Record<string, unknown> = { child_id: childId, updated_at: new Date().toISOString() };
+  if (patch.temperament !== undefined) row.temperament = patch.temperament.trim() || null;
+  if (patch.strengths !== undefined) row.strengths = patch.strengths.trim() || null;
+  if (patch.weaknesses !== undefined) row.weaknesses = patch.weaknesses.trim() || null;
+  if (patch.cautions !== undefined) row.cautions = patch.cautions.trim() || null;
+  if (patch.learningStyle !== undefined) row.learning_style = patch.learningStyle.trim() || null;
+  if (patch.emotionalBehavior !== undefined) row.emotional_behavior = patch.emotionalBehavior.trim() || null;
+  if (patch.counselingGoal !== undefined) row.counseling_goal = patch.counselingGoal.trim() || null;
+  if (patch.teacherMemo !== undefined) row.teacher_memo = patch.teacherMemo.trim() || null;
+  if (patch.aiGuidanceNote !== undefined) row.ai_guidance_note = patch.aiGuidanceNote.trim() || null;
+  if (patch.aiIncludeFields !== undefined) row.ai_include_fields = patch.aiIncludeFields;
+  if (updatedBy !== undefined) row.updated_by = updatedBy;
+  const { data, error } = await db().from("child_traits").upsert(row, { onConflict: "child_id" }).select(CHILD_TRAITS_SELECT).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("아동 특성 저장 직후 조회에 실패했습니다.");
+  return data as unknown as ChildTraits;
+}
+
+/* ---------------- 9단계: 뇌파훈련기록 (eeg_training_sessions, 아동당 다건) ---------------- */
+
+const EEG_SESSION_SELECT =
+  "id, childId:child_id, sessionDate:session_date, durationMinutes:duration_minutes, trainingMode:training_mode, trainingStage:training_stage, equipment, keyMetrics:key_metrics, conditionNote:condition_note, engagementNote:engagement_note, observation, specialNote:special_note, staffId:staff_id, parentComment:parent_comment, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+
+export interface EegSessionInput {
+  childId: string;
+  sessionDate: string;
+  durationMinutes?: number | null;
+  trainingMode?: string;
+  trainingStage?: string;
+  equipment?: string;
+  keyMetrics?: Record<string, number | string | null>;
+  conditionNote?: string;
+  engagementNote?: string;
+  observation?: string;
+  specialNote?: string;
+  staffId?: string;
+  parentComment?: string;
+  isPublicToParent?: boolean;
+}
+
+export async function createEegTrainingSession(input: EegSessionInput): Promise<EegTrainingSession> {
+  const id = `eeg_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    child_id: input.childId,
+    session_date: input.sessionDate,
+    duration_minutes: input.durationMinutes ?? null,
+    training_mode: input.trainingMode?.trim() || null,
+    training_stage: input.trainingStage?.trim() || null,
+    equipment: input.equipment?.trim() || null,
+    key_metrics: input.keyMetrics && Object.keys(input.keyMetrics).length > 0 ? input.keyMetrics : null,
+    condition_note: input.conditionNote?.trim() || null,
+    engagement_note: input.engagementNote?.trim() || null,
+    observation: input.observation?.trim() || null,
+    special_note: input.specialNote?.trim() || null,
+    staff_id: input.staffId || null,
+    parent_comment: input.parentComment?.trim() || null,
+    is_public_to_parent: !!input.isPublicToParent,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("eeg_training_sessions").insert(row);
+  if (error) throw error;
+  const { data, error: fetchError } = await db().from("eeg_training_sessions").select(EEG_SESSION_SELECT).eq("id", id).maybeSingle();
+  if (fetchError) throw fetchError;
+  return data as unknown as EegTrainingSession;
+}
+
+export async function updateEegTrainingSession(
+  id: string,
+  patch: Partial<Omit<EegSessionInput, "childId">>
+): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.sessionDate !== undefined) row.session_date = patch.sessionDate;
+  if (patch.durationMinutes !== undefined) row.duration_minutes = patch.durationMinutes;
+  if (patch.trainingMode !== undefined) row.training_mode = patch.trainingMode?.trim() || null;
+  if (patch.trainingStage !== undefined) row.training_stage = patch.trainingStage?.trim() || null;
+  if (patch.equipment !== undefined) row.equipment = patch.equipment?.trim() || null;
+  if (patch.keyMetrics !== undefined) {
+    row.key_metrics = patch.keyMetrics && Object.keys(patch.keyMetrics).length > 0 ? patch.keyMetrics : null;
+  }
+  if (patch.conditionNote !== undefined) row.condition_note = patch.conditionNote?.trim() || null;
+  if (patch.engagementNote !== undefined) row.engagement_note = patch.engagementNote?.trim() || null;
+  if (patch.observation !== undefined) row.observation = patch.observation?.trim() || null;
+  if (patch.specialNote !== undefined) row.special_note = patch.specialNote?.trim() || null;
+  if (patch.parentComment !== undefined) row.parent_comment = patch.parentComment?.trim() || null;
+  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  const { data, error } = await db().from("eeg_training_sessions").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자 실수 삭제 대비 — 소프트삭제(deleted_at만 세팅, 실제 행은 남김) */
+export async function softDeleteEegTrainingSession(id: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("eeg_training_sessions")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/** 관리자/선생님 전용 — 아이 상세 "뇌파훈련기록" 탭용. 최신 세션일 순(소프트삭제 제외) */
+export async function getEegTrainingSessionsByChild(childId: string): Promise<EegTrainingSession[]> {
+  const { data, error } = await db()
+    .from("eeg_training_sessions")
+    .select(EEG_SESSION_SELECT)
+    .eq("child_id", childId)
+    .is("deleted_at", null)
+    .order("session_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as EegTrainingSession[];
+}
+
+/** [권한검사용] 이 훈련기록이 어느 아이 소속인지만 가볍게 조회 */
+export async function getEegTrainingSessionOwner(id: string): Promise<string | null> {
+  const { data, error } = await db().from("eeg_training_sessions").select("childId:child_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as { childId: string } | null)?.childId ?? null;
 }
 
 /* ---------------- 학부모 전용 공지 (대상분리 + 읽음여부) ---------------- */

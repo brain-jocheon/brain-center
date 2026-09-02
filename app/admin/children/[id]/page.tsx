@@ -10,6 +10,7 @@ import {
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
   getChildCommentsByChild, getMonthlyReportsByChild, actorCanAccessChild, getBrainTestTypes,
+  getChildTraits, getEegTrainingSessionsByChild,
 } from "@/lib/data";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
@@ -24,7 +25,9 @@ import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
 import ChildDetailTabs from "@/components/admin/ChildDetailTabs";
 import ChildCommentsHistory, { type ChildCommentItem } from "@/components/admin/ChildCommentsHistory";
 import MonthlyReportsPanel from "@/components/admin/MonthlyReportsPanel";
-import type { AttendanceRecord, MonthlyReport } from "@/lib/types";
+import ChildTraitsPanel from "@/components/admin/ChildTraitsPanel";
+import EegTrainingPanel from "@/components/admin/EegTrainingPanel";
+import type { AttendanceRecord, MonthlyReport, ChildTraits, EegTrainingSession } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +106,20 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     monthlyReports = await getMonthlyReportsByChild(child.id);
   } catch {
     // monthly_reports 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
+
+  // [9단계] child_traits/eeg_training_sessions 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  let childTraits: ChildTraits | null = null;
+  try {
+    childTraits = await getChildTraits(child.id);
+  } catch {
+    // child_traits 테이블 마이그레이션 전 — null로 대체
+  }
+  let eegSessions: EegTrainingSession[] = [];
+  try {
+    eegSessions = await getEegTrainingSessionsByChild(child.id);
+  } catch {
+    // eeg_training_sessions 테이블 마이그레이션 전 — 빈 목록으로 대체
   }
 
   const otherActiveChildren = allChildren
@@ -254,6 +271,8 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     </section>
   );
 
+  const traitsTab = <ChildTraitsPanel childId={child.id} traits={childTraits} canManageAiFields={isFullAdmin(actor)} />;
+  const eegTab = <EegTrainingPanel childId={child.id} sessions={eegSessions} />;
   const commentsTab = <ChildCommentsHistory items={commentItems} />;
   const monthlyTab = <MonthlyReportsPanel childId={child.id} reports={monthlyReports} />;
 
@@ -272,6 +291,8 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           reports={reportsTab}
           attendance={attendanceTab}
           brain={brainTab}
+          traits={traitsTab}
+          eeg={eegTab}
           photos={photosTab}
           comments={commentsTab}
           monthly={monthlyTab}

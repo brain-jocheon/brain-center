@@ -8,13 +8,15 @@
 
 import { useState, type ReactNode } from "react";
 
-type TabKey = "info" | "reports" | "attendance" | "brain" | "photos" | "comments" | "monthly";
+type TabKey = "info" | "reports" | "attendance" | "brain" | "traits" | "eeg" | "photos" | "comments" | "monthly";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "info", label: "기본정보" },
   { key: "reports", label: "결과지" },
   { key: "attendance", label: "출결·보강" },
   { key: "brain", label: "뇌기능검사" },
+  { key: "traits", label: "아동특성" },
+  { key: "eeg", label: "뇌파훈련기록" },
   { key: "photos", label: "활동사진" },
   { key: "comments", label: "수업 코멘트" },
   { key: "monthly", label: "월간리포트" },
@@ -25,6 +27,8 @@ export default function ChildDetailTabs({
   reports,
   attendance,
   brain,
+  traits,
+  eeg,
   photos,
   comments,
   monthly,
@@ -33,12 +37,14 @@ export default function ChildDetailTabs({
   reports: ReactNode;
   attendance: ReactNode;
   brain: ReactNode;
+  traits: ReactNode;
+  eeg: ReactNode;
   photos: ReactNode;
   comments: ReactNode;
   monthly: ReactNode;
 }) {
   const [tab, setTab] = useState<TabKey>("info");
-  const content: Record<TabKey, ReactNode> = { info, reports, attendance, brain, photos, comments, monthly };
+  const content: Record<TabKey, ReactNode> = { info, reports, attendance, brain, traits, eeg, photos, comments, monthly };
 
   return (
     <div>
