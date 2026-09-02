@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * 뇌기능검사 목록 — 지표·의견·8단계 신규 필드 수정/삭제, 원본 PDF는 서버가 미리 서명한 URL로 열람.
+ * 뇌기능검사 목록 — 지표·의견·8단계 신규 필드 수정/삭제, 원본 파일은 서버가 미리 서명한 URL로 열람.
  * [7단계] canEdit=false(선생님)이면 수정/삭제 버튼 없이 읽기 전용으로만 보여줌 —
  * API 자체도 관리자 전용으로 막혀 있지만(app/api/admin/brain-tests), 애초에 못 누르게.
+ * [11단계] "자동 추출 시도"는 파일에서 텍스트/표를 뽑아 지표 후보를 보여줄 뿐, 사람이
+ * 후보를 직접 골라 눌러야만(칩 클릭) 실제 지표에 반영됨 — 자동으로 확정되지 않음.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BrainTest, BrainIndicator } from "@/lib/types";
 import { STATUS_LABEL } from "./brainTestStatus";
+import { deriveCandidateIndicators } from "@/lib/extraction/heuristics";
 
 export type BrainTestWithFileUrl = BrainTest & { fileUrl?: string };
+
+const CONFIDENCE_LABEL: Record<string, string> = { none: "없음", low: "낮음", high: "높음" };
 
 export default function BrainTestList({ tests, canEdit }: { tests: BrainTestWithFileUrl[]; canEdit: boolean }) {
   if (tests.length === 0) {
@@ -40,7 +45,58 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
   const [opinion, setOpinion] = useState(test.opinion ?? "");
   const [parentSummary, setParentSummary] = useState(test.parentSummary ?? "");
   const [isPublicToParent, setIsPublicToParent] = useState(test.isPublicToParent);
+  const [extracting, setExtracting] = useState(false);
+  const [extractWarnings, setExtractWarnings] = useState<{ duplicate?: string; nameMismatch?: string } | null>(null);
+  const [extractError, setExtractError] = useState("");
   const router = useRouter();
+
+  const candidateIndicators = useMemo(() => deriveCandidateIndicators(test.rawExtracted ?? null), [test.rawExtracted]);
+
+  function addCandidateAsIndicator(candidate: { label: string; value: string }) {
+    setIndicators((prev) => {
+      if (prev.some((row) => row.label === candidate.label && row.value === candidate.value)) return prev;
+      const nonEmpty = prev.filter((row) => row.label || row.value);
+      return [...nonEmpty, candidate];
+    });
+  }
+
+  async function handleExtract() {
+    setExtracting(true);
+    setExtractError("");
+    setExtractWarnings(null);
+    const res = await fetch(`/api/admin/brain-tests/${test.id}/extract`, { method: "POST" });
+    const data = await res.json().catch(() => null);
+    setExtracting(false);
+    if (!res.ok || !data?.ok) {
+      setExtractError(data?.message || "추출에 실패했습니다.");
+      return;
+    }
+    setExtractWarnings({ duplicate: data.duplicateWarning, nameMismatch: data.nameMismatchWarning });
+    setEditing(true);
+    router.refresh();
+  }
+
+  async function handleConfirmExtraction() {
+    setSaving(true);
+    setMessage("");
+    const res = await fetch(`/api/admin/brain-tests/${test.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        indicators, opinion, isPublicToParent,
+        testType, testName, measuringOrg, measuredBy, parentSummary,
+        status: "confirmed", confirmExtraction: true,
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setStatus("confirmed");
+      setEditing(false);
+      router.refresh();
+    } else {
+      setMessage("저장에 실패했습니다.");
+    }
+  }
 
   function updateIndicator(i: number, patch: Partial<BrainIndicator>) {
     setIndicators((prev) => prev.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
@@ -101,6 +157,11 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
             {test.approvedAt && (
               <span className="text-[10px] text-ink/35">승인 {test.approvedBy} · {test.approvedAt.slice(0, 10)}</span>
             )}
+            {test.extractionConfidence && (
+              <span className="text-[10px] rounded-full px-2 py-0.5 font-medium bg-sky-50 text-sky-700">
+                추출 신뢰도 {CONFIDENCE_LABEL[test.extractionConfidence] ?? test.extractionConfidence}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -108,6 +169,11 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
             <a className="text-xs text-sage-600 underline underline-offset-2" href={test.fileUrl} target="_blank" rel="noreferrer">
               원본 PDF 보기
             </a>
+          )}
+          {canEdit && test.fileStoragePath && (
+            <button className="text-xs text-sage-600 underline underline-offset-2" disabled={extracting} onClick={handleExtract}>
+              {extracting ? "추출 중..." : test.rawExtracted ? "다시 추출" : "자동 추출 시도"}
+            </button>
           )}
           {canEdit && (
             <>
@@ -117,6 +183,8 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
           )}
         </div>
       </div>
+
+      {extractError && <p className="text-xs text-apricot-600 mb-2">{extractError}</p>}
 
       {!editing && (
         <>
@@ -145,6 +213,41 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
 
       {editing && canEdit && (
         <div className="mt-2 space-y-2 border-t border-sage-100 pt-3">
+          {test.rawExtracted && (
+            <div className="rounded-lg bg-sky-50 border border-sky-100 p-3 space-y-2">
+              <p className="text-xs font-medium text-sky-700">추출 결과 (파일에서 자동으로 뽑아본 값 — 규칙 기반 추정이라 틀리거나 놓칠 수 있습니다)</p>
+              {(extractWarnings?.duplicate || extractWarnings?.nameMismatch) && (
+                <div className="space-y-1">
+                  {extractWarnings.duplicate && <p className="text-xs text-apricot-600">⚠ {extractWarnings.duplicate}</p>}
+                  {extractWarnings.nameMismatch && <p className="text-xs text-apricot-600">⚠ {extractWarnings.nameMismatch}</p>}
+                </div>
+              )}
+              {test.extractionConfidence === "none" ? (
+                <p className="text-xs text-ink/50">텍스트에서 지표 후보를 찾지 못했습니다 — 스캔된 이미지 파일일 수 있습니다(이미지 인식은 추후 지원 예정). 원본을 직접 확인해 지표를 입력해 주세요.</p>
+              ) : candidateIndicators.length === 0 ? (
+                <p className="text-xs text-ink/50">표시할 후보가 없습니다.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {candidateIndicators.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="text-xs bg-white border border-sky-200 text-sky-700 rounded-full px-2.5 py-1 hover:bg-sky-100"
+                      onClick={() => addCandidateAsIndicator(c)}
+                    >
+                      + {c.label} {c.value}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {test.rawExtracted.type === "pdf" && (
+                <details className="text-xs text-ink/50">
+                  <summary className="cursor-pointer text-sky-700">원본 추출 텍스트 보기</summary>
+                  <pre className="whitespace-pre-wrap mt-1 max-h-48 overflow-y-auto">{test.rawExtracted.text}</pre>
+                </details>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input className="input !py-2 text-sm" placeholder="검사 종류" value={testType} onChange={(e) => setTestType(e.target.value)} />
             <input className="input !py-2 text-sm" placeholder="검사명" value={testName} onChange={(e) => setTestName(e.target.value)} />
@@ -171,9 +274,16 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
             학부모에게 공개
           </label>
           {message && <p className="text-xs text-apricot-600">{message}</p>}
-          <button className="btn-primary text-xs !px-3 !py-1.5" disabled={saving} onClick={handleSave}>
-            {saving ? "저장 중..." : "저장"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button className="btn-primary text-xs !px-3 !py-1.5" disabled={saving} onClick={handleSave}>
+              {saving ? "저장 중..." : "저장"}
+            </button>
+            {currentStatus === "needs_review" && (
+              <button className="btn-ghost text-xs !px-3 !py-1.5 !text-sage-700 !border-sage-300" disabled={saving} onClick={handleConfirmExtraction}>
+                확인 완료로 저장
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

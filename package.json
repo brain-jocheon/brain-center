@@ -12,8 +12,10 @@
     "@supabase/supabase-js": "^2.110.0",
     "bcryptjs": "^3.0.3",
     "next": "14.2.15",
+    "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -186,7 +186,8 @@ export interface BrainTest {
   measuringOrg?: string;
   measuredBy?: string;
   /** 파일에서 추출한 원본 구조화 데이터(선생님 확인 전) */
-  rawExtracted?: Record<string, unknown>;
+  /** 11단계 — 파일에서 추출한 원본 데이터. 정확한 모양은 lib/extraction/types.ts의 RawExtracted 참고 */
+  rawExtracted?: import("./extraction/types").RawExtracted;
   extractionConfidence?: string;
   teacherConfirmedAt?: string;
   aiInterpretation?: Record<string, unknown>;

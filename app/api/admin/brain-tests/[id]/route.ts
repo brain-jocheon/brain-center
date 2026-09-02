@@ -30,6 +30,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         measuredBy?: string;
         parentSummary?: string;
         status?: string;
+        /** [11단계] true면 서버가 teacherConfirmedAt을 직접 계산해 기록(클라이언트 시각 안 믿음) */
+        confirmExtraction?: boolean;
       }
     | null;
 
@@ -64,6 +66,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       measuredBy: body.measuredBy,
       parentSummary: body.parentSummary,
       status: body.status as BrainTest["status"] | undefined,
+      teacherConfirmedAt: body.confirmExtraction ? new Date().toISOString() : undefined,
     },
     approverName
   );

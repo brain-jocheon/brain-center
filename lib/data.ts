@@ -1468,11 +1468,15 @@ export async function deleteNotice(id: string): Promise<boolean> {
 export const BRAIN_TEST_BUCKET = "brain-test-files";
 const ALLOWED_BRAIN_FILE_EXT: Record<string, string> = {
   pdf: "application/pdf",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  csv: "text/csv",
 };
 
 const BRAIN_TEST_SELECT =
   "id, childId:child_id, testDate:test_date, counselor, fileStoragePath:file_storage_path, fileName:file_name, indicators, opinion, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at, " +
-  "testType:test_type, testName:test_name, measuringOrg:measuring_org, measuredBy:measured_by, parentSummary:parent_summary, approvedBy:approved_by, approvedAt:approved_at, status";
+  "testType:test_type, testName:test_name, measuringOrg:measuring_org, measuredBy:measured_by, parentSummary:parent_summary, approvedBy:approved_by, approvedAt:approved_at, status, " +
+  "rawExtracted:raw_extracted, extractionConfidence:extraction_confidence, teacherConfirmedAt:teacher_confirmed_at, sourceFileHash:source_file_hash";
 
 /** 8단계 — 검사종류 자동완성용(기존 값 중복 제거, 최신순). getActivityNames()와 동일 패턴 */
 export async function getBrainTestTypes(): Promise<string[]> {
@@ -1515,7 +1519,7 @@ export async function createBrainFileUploadTarget(
   const ext = extFromBrainFilename(filename);
   const expectedMime = ALLOWED_BRAIN_FILE_EXT[ext];
   if (!expectedMime || expectedMime !== contentType) {
-    throw new Error("허용되지 않는 파일 형식입니다. (PDF만 가능)");
+    throw new Error("허용되지 않는 파일 형식입니다. (PDF, Excel(xlsx/xls), CSV만 가능)");
   }
   const path = `${childId}/${randomBytes(8).toString("hex")}.${ext}`;
   const { data, error } = await db().storage.from(BRAIN_TEST_BUCKET).createSignedUploadUrl(path);
@@ -1539,6 +1543,12 @@ export interface BrainTestInput {
   /** 학부모 공개용 요약 — 있으면 학부모 화면에서 opinion 대신 이걸 보여줌(reportPayload.ts) */
   parentSummary?: string;
   status?: BrainTest["status"];
+  /** 11단계 — 파일에서 추출한 원본 데이터(선생님 확인 전). 추출 API만 세팅, 사람이 직접 입력 안 함 */
+  rawExtracted?: BrainTest["rawExtracted"];
+  extractionConfidence?: string;
+  sourceFileHash?: string;
+  /** 11단계 — "확인 완료로 저장" 버튼을 누른 시각. 서버가 직접 계산해서 넣음(클라이언트 시각 안 믿음) */
+  teacherConfirmedAt?: string;
 }
 
 export async function createBrainTest(input: BrainTestInput): Promise<BrainTest> {
@@ -1591,6 +1601,10 @@ export async function updateBrainTest(
   if (patch.measuringOrg !== undefined) row.measuring_org = patch.measuringOrg?.trim() || null;
   if (patch.measuredBy !== undefined) row.measured_by = patch.measuredBy?.trim() || null;
   if (patch.parentSummary !== undefined) row.parent_summary = patch.parentSummary?.trim() || null;
+  if (patch.rawExtracted !== undefined) row.raw_extracted = patch.rawExtracted;
+  if (patch.extractionConfidence !== undefined) row.extraction_confidence = patch.extractionConfidence;
+  if (patch.sourceFileHash !== undefined) row.source_file_hash = patch.sourceFileHash;
+  if (patch.teacherConfirmedAt !== undefined) row.teacher_confirmed_at = patch.teacherConfirmedAt;
   if (patch.status !== undefined) {
     row.status = patch.status;
     if (patch.status === "approved") {
@@ -1626,6 +1640,33 @@ export async function createSignedBrainFileUrl(path: string, expiresIn = 600): P
 export async function deleteBrainFile(path: string): Promise<void> {
   const { error } = await db().storage.from(BRAIN_TEST_BUCKET).remove([path]);
   if (error) throw error;
+}
+
+/** [11단계] 추출을 위해 서버가 파일 바이트를 직접 내려받음 — 이 코드베이스에서 Storage
+ * .download() 첫 사용(지금까지는 서명 URL 발급/삭제만 있었음). */
+export async function downloadBrainFile(path: string): Promise<Buffer> {
+  const { data, error } = await db().storage.from(BRAIN_TEST_BUCKET).download(path);
+  if (error) throw error;
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+/** [11단계] 같은 아이의 다른 검사 중 파일 해시가 같은 게 있으면 그 검사 id를 반환(중복 업로드 경고용) */
+export async function findDuplicateBrainTestBySourceHash(
+  childId: string,
+  hash: string,
+  excludeId: string
+): Promise<string | null> {
+  const { data, error } = await db()
+    .from("brain_tests")
+    .select("id")
+    .eq("child_id", childId)
+    .eq("source_file_hash", hash)
+    .neq("id", excludeId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 /* ---------------- 출결/보강 ---------------- */
