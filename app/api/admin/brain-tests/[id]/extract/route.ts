@@ -9,7 +9,6 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { isFullAdmin, getCurrentActor } from "@/lib/auth";
 import { getBrainTest, getChild, downloadBrainFile, findDuplicateBrainTestBySourceHash, updateBrainTest } from "@/lib/data";
-import { extractFromFile, textContainsName } from "@/lib/extraction";
 
 function extFromPath(path: string): string {
   const m = /\.([a-zA-Z0-9]+)$/.exec(path);
@@ -32,6 +31,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const buffer = await downloadBrainFile(test.fileStoragePath);
   const sourceFileHash = createHash("sha256").update(buffer).digest("hex");
   const ext = extFromPath(test.fileStoragePath);
+
+  // [주의] pdf-parse가 끌고 오는 pdfjs-dist는 최상단에서 정적으로 import하면 라우트 모듈
+  // 자체를 불러오는 시점(핸들러 실행 전)에 깨질 수 있어 여기서 동적 import로 감싼다 —
+  // 실패해도 이 try/catch가 실제로 잡을 수 있게(정적 import는 여기서 못 잡음).
+  let extractFromFile: typeof import("@/lib/extraction").extractFromFile;
+  let textContainsName: typeof import("@/lib/extraction").textContainsName;
+  try {
+    ({ extractFromFile, textContainsName } = await import("@/lib/extraction"));
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, message: `추출 모듈을 불러오지 못했습니다: ${message}` }, { status: 500 });
+  }
 
   const result = await extractFromFile(buffer, ext);
 
