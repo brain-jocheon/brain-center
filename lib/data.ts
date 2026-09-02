@@ -17,7 +17,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession } from "./types";
 import type { CurrentActor } from "./auth";
 import { hashParentPassword } from "./auth";
@@ -700,7 +700,7 @@ export async function deletePhotoFile(path: string): Promise<void> {
 /* ---------------- 수업기록 / 아이별 코멘트 / 코멘트 템플릿 ---------------- */
 
 const CLASS_RECORD_SELECT =
-  "id, classDate:class_date, activityName:activity_name, activityType:activity_type, comment, counselor, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+  "id, classDate:class_date, activityName:activity_name, activityType:activity_type, comment, counselor, lessonGoal:lesson_goal, participation, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
 
 async function attachChildIds(records: Omit<ClassRecord, "childIds">[]): Promise<ClassRecord[]> {
   if (records.length === 0) return [];
@@ -719,6 +719,19 @@ async function attachChildIds(records: Omit<ClassRecord, "childIds">[]): Promise
   return records.map((r) => ({ ...r, childIds: map.get(r.id) ?? [] }));
 }
 
+/** 10단계 — 아이별 코멘트에 함께 실어보낼 수 있는 확장 필드(전부 선택, 있으면 그대로 저장) */
+export interface ChildCommentExtras {
+  strengthsNote?: string;
+  difficultiesNote?: string;
+  teacherMemo?: string;
+  aiDraftDetail?: string;
+  aiDraftParent?: string;
+  aiDraftGuidance?: string;
+  aiGeneratedAt?: string;
+  aiModel?: string;
+  finalSource?: "manual" | "ai_edited";
+}
+
 export interface ClassRecordInput {
   classDate: string;
   activityName: string;
@@ -726,9 +739,12 @@ export interface ClassRecordInput {
   /** 전체 공용 코멘트 — 아이별 오버라이드가 없는 아이는 화면에서 이 문구를 그대로 씀 */
   comment?: string;
   counselor?: string;
+  /** 10단계 — 수업목표/참여도(수업 단위 공용, 아이별 아님) */
+  lessonGoal?: string;
+  participation?: string;
   childIds: string[];
   /** 아이마다 하나씩 채워서 넘김(폼에서 모든 참여 아이에 대해 공개여부를 명시적으로 정하기 때문) */
-  childComments: Record<string, { comment?: string; isPublicToParent: boolean }>;
+  childComments: Record<string, { comment?: string; isPublicToParent: boolean } & ChildCommentExtras>;
 }
 
 export async function getClassRecord(id: string): Promise<ClassRecord | null> {
@@ -751,6 +767,8 @@ export async function createClassRecord(input: ClassRecordInput): Promise<ClassR
     activity_type: input.activityType,
     comment: input.comment?.trim() || null,
     counselor: input.counselor?.trim() || null,
+    lesson_goal: input.lessonGoal?.trim() || null,
+    participation: input.participation?.trim() || null,
     created_at: now,
     updated_at: now,
   };
@@ -771,6 +789,15 @@ export async function createClassRecord(input: ClassRecordInput): Promise<ClassR
       child_id: childId,
       comment: entry.comment?.trim() || null,
       is_public_to_parent: entry.isPublicToParent,
+      strengths_note: entry.strengthsNote?.trim() || null,
+      difficulties_note: entry.difficultiesNote?.trim() || null,
+      teacher_memo: entry.teacherMemo?.trim() || null,
+      ai_draft_detail: entry.aiDraftDetail?.trim() || null,
+      ai_draft_parent: entry.aiDraftParent?.trim() || null,
+      ai_draft_guidance: entry.aiDraftGuidance?.trim() || null,
+      ai_generated_at: entry.aiGeneratedAt || null,
+      ai_model: entry.aiModel || null,
+      final_source: entry.finalSource || null,
       created_at: now,
       updated_at: now,
     };
@@ -910,6 +937,53 @@ export async function getPublicChildComments(childId: string): Promise<ParentChi
     .filter((p): p is ParentChildComment => p !== null);
   result.sort((a, b) => (a.classDate < b.classDate ? 1 : -1));
   return result;
+}
+
+/* ---------------- 10단계: AI 생성 이력 (ai_generation_logs) ---------------- */
+
+/** 단발성 호출 결과를 한 번에 기록 — pending 상태 없이 결과가 나온 시점에 딱 한 번 insert */
+export async function logAiGeneration(input: {
+  feature: "class_record" | "eeg_interpretation";
+  targetId: string;
+  staffId?: string;
+  model?: string;
+  inputSummaryHash?: string;
+  status: "success" | "failed";
+  errorMessage?: string;
+  tokensUsed?: number;
+}): Promise<void> {
+  const row = {
+    id: `aigen_${randomBytes(6).toString("hex")}`,
+    feature: input.feature,
+    target_id: input.targetId,
+    staff_id: input.staffId || null,
+    model: input.model || null,
+    prompt_version: "v1",
+    input_summary_hash: input.inputSummaryHash || null,
+    status: input.status,
+    error_message: input.errorMessage || null,
+    tokens_used: input.tokensUsed ?? null,
+    created_at: new Date().toISOString(),
+  };
+  const { error } = await db().from("ai_generation_logs").insert(row);
+  if (error) throw error;
+}
+
+/** [비용/폭주 방지] 이 선생님이 최근 windowMinutes분 동안 AI를 몇 번 호출했는지 */
+export async function countRecentAiGenerationsByStaff(staffId: string, windowMinutes: number): Promise<number> {
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const { count, error } = await db()
+    .from("ai_generation_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("staff_id", staffId)
+    .gte("created_at", since);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** 개인정보를 남기지 않고 "이 입력이 대략 무엇이었는지"만 재현 가능하게 남기는 해시 */
+export function hashAiInputSummary(parts: (string | undefined)[]): string {
+  return createHash("sha256").update(parts.filter(Boolean).join("|")).digest("hex");
 }
 
 const COMMENT_TEMPLATE_SELECT = "id, text, createdAt:created_at";

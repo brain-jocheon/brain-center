@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { getCurrentActor } from "@/lib/auth";
 import { createClassRecord, actorCanAccessChild } from "@/lib/data";
 import type { ActivityPhoto } from "@/lib/types";
+import type { ChildCommentExtras } from "@/lib/data";
 
 const ACTIVITY_TYPES: ActivityPhoto["activityType"][] = ["class", "craft", "cooking", "neurofeedback", "event", "other"];
 
@@ -24,8 +25,10 @@ export async function POST(req: Request) {
         activityType?: string;
         comment?: string;
         counselor?: string;
+        lessonGoal?: string;
+        participation?: string;
         childIds?: string[];
-        childComments?: Record<string, { comment?: string; isPublicToParent: boolean }>;
+        childComments?: Record<string, { comment?: string; isPublicToParent: boolean } & ChildCommentExtras>;
       }
     | null;
 
@@ -54,6 +57,8 @@ export async function POST(req: Request) {
     activityType: body.activityType as ActivityPhoto["activityType"],
     comment: body.comment?.trim() || undefined,
     counselor: body.counselor?.trim() || undefined,
+    lessonGoal: body.lessonGoal?.trim() || undefined,
+    participation: body.participation?.trim() || undefined,
     childIds,
     childComments: body.childComments ?? {},
   });

@@ -19,7 +19,19 @@ const ACTIVITY_TYPE_LABEL: Record<string, string> = {
 const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"];
 
 type ChildOption = { id: string; name: string; grade: string };
-type PerChildState = { override: boolean; comment: string; isPublicToParent: boolean };
+type AiDraft = { detail: string; parent: string; guidance: string; model: string };
+type PerChildState = {
+  override: boolean;
+  comment: string;
+  isPublicToParent: boolean;
+  teacherMemo: string;
+  strengthsNote: string;
+  difficultiesNote: string;
+  aiLoading: boolean;
+  aiDraft: AiDraft | null;
+  aiMessage: string;
+  aiUsedForComment: boolean;
+};
 
 export default function QuickClassRecordForm({
   selectableChildren,
@@ -33,6 +45,8 @@ export default function QuickClassRecordForm({
   const [classDate, setClassDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [activityName, setActivityName] = useState("");
   const [activityType, setActivityType] = useState("class");
+  const [lessonGoal, setLessonGoal] = useState("");
+  const [participation, setParticipation] = useState("");
   const [childFilter, setChildFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<File[]>([]);
@@ -70,11 +84,69 @@ export default function QuickClassRecordForm({
   }
 
   function getPerChild(id: string): PerChildState {
-    return perChild[id] ?? { override: false, comment: "", isPublicToParent: false };
+    return (
+      perChild[id] ?? {
+        override: false,
+        comment: "",
+        isPublicToParent: false,
+        teacherMemo: "",
+        strengthsNote: "",
+        difficultiesNote: "",
+        aiLoading: false,
+        aiDraft: null,
+        aiMessage: "",
+        aiUsedForComment: false,
+      }
+    );
   }
 
   function updatePerChild(id: string, patch: Partial<PerChildState>) {
     setPerChild((prev) => ({ ...prev, [id]: { ...getPerChild(id), ...patch } }));
+  }
+
+  async function generateAiDraft(childId: string) {
+    const state = getPerChild(childId);
+    if (!state.teacherMemo.trim()) return;
+    updatePerChild(childId, { aiLoading: true, aiMessage: "", aiDraft: null });
+    try {
+      const res = await fetch("/api/admin/ai/class-record-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          childId,
+          activityName: activityName.trim(),
+          activityType,
+          classDate,
+          lessonGoal: lessonGoal.trim() || undefined,
+          participation: participation.trim() || undefined,
+          strengthsNote: state.strengthsNote.trim() || undefined,
+          difficultiesNote: state.difficultiesNote.trim() || undefined,
+          teacherMemo: state.teacherMemo.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        updatePerChild(childId, { aiLoading: false, aiMessage: data?.message || "AI 초안 생성에 실패했습니다." });
+        return;
+      }
+      if (!data?.ok) {
+        updatePerChild(childId, { aiLoading: false, aiMessage: data?.message || "AI 초안 생성에 실패했습니다." });
+        return;
+      }
+      updatePerChild(childId, {
+        aiLoading: false,
+        aiMessage: "",
+        aiDraft: { ...data.draft, model: data.model },
+      });
+    } catch {
+      updatePerChild(childId, { aiLoading: false, aiMessage: "네트워크 오류로 AI 초안 생성에 실패했습니다." });
+    }
+  }
+
+  function useAiDraftAsComment(childId: string) {
+    const state = getPerChild(childId);
+    if (!state.aiDraft) return;
+    updatePerChild(childId, { override: true, comment: state.aiDraft.parent, aiUsedForComment: true });
   }
 
   function insertTemplate(text: string) {
@@ -123,12 +195,25 @@ export default function QuickClassRecordForm({
     setMessage("");
     setProgress([]);
 
-    const childComments: Record<string, { comment?: string; isPublicToParent: boolean }> = {};
+    const childComments: Record<string, Record<string, unknown>> = {};
     for (const id of Array.from(selectedIds)) {
       const state = getPerChild(id);
       childComments[id] = {
         comment: state.override ? state.comment.trim() || undefined : undefined,
         isPublicToParent: state.isPublicToParent,
+        strengthsNote: state.strengthsNote.trim() || undefined,
+        difficultiesNote: state.difficultiesNote.trim() || undefined,
+        teacherMemo: state.teacherMemo.trim() || undefined,
+        ...(state.aiDraft
+          ? {
+              aiDraftDetail: state.aiDraft.detail,
+              aiDraftParent: state.aiDraft.parent,
+              aiDraftGuidance: state.aiDraft.guidance,
+              aiGeneratedAt: new Date().toISOString(),
+              aiModel: state.aiDraft.model,
+            }
+          : {}),
+        finalSource: state.aiUsedForComment ? "ai_edited" : state.comment.trim() ? "manual" : undefined,
       };
     }
 
@@ -142,6 +227,8 @@ export default function QuickClassRecordForm({
           activityName: activityName.trim(),
           activityType,
           comment: sharedComment.trim() || undefined,
+          lessonGoal: lessonGoal.trim() || undefined,
+          participation: participation.trim() || undefined,
           childIds: Array.from(selectedIds),
           childComments,
         }),
@@ -242,6 +329,14 @@ export default function QuickClassRecordForm({
                 <option key={v} value={v}>{label}</option>
               ))}
             </select>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1.5">수업목표 (선택)</span>
+            <input className="input" value={lessonGoal} onChange={(e) => setLessonGoal(e.target.value)} placeholder="예: 순서대로 지시 따르기" />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1.5">참여도 (선택)</span>
+            <input className="input" value={participation} onChange={(e) => setParticipation(e.target.value)} placeholder="예: 적극적" />
           </label>
         </div>
       </div>
@@ -370,6 +465,54 @@ export default function QuickClassRecordForm({
                     />
                     이 아이 학부모에게 공개
                   </label>
+
+                  <div className="mt-3 pt-3 border-t border-sage-100">
+                    <p className="text-xs font-medium text-ink/60 mb-1.5">AI 초안 도우미 (선택)</p>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <input
+                        className="input !py-1.5 text-xs"
+                        placeholder="잘한 점"
+                        value={state.strengthsNote}
+                        onChange={(e) => updatePerChild(c.id, { strengthsNote: e.target.value })}
+                      />
+                      <input
+                        className="input !py-1.5 text-xs"
+                        placeholder="어려워한 점"
+                        value={state.difficultiesNote}
+                        onChange={(e) => updatePerChild(c.id, { difficultiesNote: e.target.value })}
+                      />
+                    </div>
+                    <textarea
+                      className="input !py-1.5 text-xs min-h-12 mb-2"
+                      placeholder="짧은 메모 (예: 오늘 처음 보는 도형도 스스로 맞췄음)"
+                      value={state.teacherMemo}
+                      onChange={(e) => updatePerChild(c.id, { teacherMemo: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="btn-ghost !px-3 !py-1.5 text-xs"
+                      disabled={!state.teacherMemo.trim() || state.aiLoading}
+                      onClick={() => generateAiDraft(c.id)}
+                    >
+                      {state.aiLoading ? "AI 초안 생성 중..." : "AI 초안 생성"}
+                    </button>
+                    {state.aiMessage && <p className="text-xs text-ink/50 mt-2">{state.aiMessage}</p>}
+                    {state.aiDraft && (
+                      <div className="mt-2 space-y-2">
+                        <AiDraftBlock label="내부용 상세" text={state.aiDraft.detail} />
+                        <AiDraftBlock label="학부모용 코멘트" text={state.aiDraft.parent}>
+                          <button
+                            type="button"
+                            className="text-[11px] text-sage-600 underline underline-offset-2"
+                            onClick={() => useAiDraftAsComment(c.id)}
+                          >
+                            이 내용을 코멘트로 사용
+                          </button>
+                        </AiDraftBlock>
+                        <AiDraftBlock label="다음 지도 방향" text={state.aiDraft.guidance} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -390,6 +533,18 @@ export default function QuickClassRecordForm({
           {saving ? "저장 중..." : "수업기록 저장"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function AiDraftBlock({ label, text, children }: { label: string; text: string; children?: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-sage-50 p-2">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-[11px] font-medium text-sage-700">{label}</p>
+        {children}
+      </div>
+      <p className="text-xs text-ink/70 whitespace-pre-wrap leading-relaxed">{text}</p>
     </div>
   );
 }
