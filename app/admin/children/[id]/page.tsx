@@ -10,7 +10,7 @@ import {
   getChildren, getPhotosByChild, getActivityNames, createSignedPhotoUrl,
   getBrainTestsByChild, createSignedBrainFileUrl, getAttendanceByChild,
   getChildCommentsByChild, getMonthlyReportsByChild, actorCanAccessChild, getBrainTestTypes,
-  getChildTraits, getEegTrainingSessionsByChild,
+  getChildTraits, getEegTrainingSessionsByChild, getEegTestTemplates,
 } from "@/lib/data";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import { CANONICAL_NAMES } from "@/lib/content/mtpris/types";
@@ -20,6 +20,7 @@ import PhotoUploadForm from "@/components/admin/PhotoUploadForm";
 import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery";
 import BrainTestForm from "@/components/admin/BrainTestForm";
 import BrainTestList, { type BrainTestWithFileUrl } from "@/components/admin/BrainTestList";
+import BrainTestComparison from "@/components/admin/BrainTestComparison";
 import AttendanceCalendar from "@/components/admin/AttendanceCalendar";
 import FamilyGroupPanel from "@/components/admin/FamilyGroupPanel";
 import ChildDetailTabs from "@/components/admin/ChildDetailTabs";
@@ -27,7 +28,7 @@ import ChildCommentsHistory, { type ChildCommentItem } from "@/components/admin/
 import MonthlyReportsPanel from "@/components/admin/MonthlyReportsPanel";
 import ChildTraitsPanel from "@/components/admin/ChildTraitsPanel";
 import EegTrainingPanel from "@/components/admin/EegTrainingPanel";
-import type { AttendanceRecord, MonthlyReport, ChildTraits, EegTrainingSession } from "@/lib/types";
+import type { AttendanceRecord, MonthlyReport, ChildTraits, EegTrainingSession, EegTestTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,14 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     eegSessions = await getEegTrainingSessionsByChild(child.id);
   } catch {
     // eeg_training_sessions 테이블 마이그레이션 전 — 빈 목록으로 대체
+  }
+
+  // [13단계] eeg_test_templates 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
+  let testTemplates: EegTestTemplate[] = [];
+  try {
+    testTemplates = await getEegTestTemplates();
+  } catch {
+    // eeg_test_templates 테이블 마이그레이션 전 — 빈 목록으로 대체(전후비교는 기준 없이 표시)
   }
 
   const otherActiveChildren = allChildren
@@ -271,6 +280,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
     </section>
   );
 
+  const compareTab = <BrainTestComparison tests={brainTestsWithUrl} templates={testTemplates} />;
   const traitsTab = <ChildTraitsPanel childId={child.id} traits={childTraits} canManageAiFields={isFullAdmin(actor)} />;
   const eegTab = <EegTrainingPanel childId={child.id} sessions={eegSessions} />;
   const commentsTab = <ChildCommentsHistory items={commentItems} />;
@@ -291,6 +301,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
           reports={reportsTab}
           attendance={attendanceTab}
           brain={brainTab}
+          compare={compareTab}
           traits={traitsTab}
           eeg={eegTab}
           photos={photosTab}

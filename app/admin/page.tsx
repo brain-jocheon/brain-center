@@ -106,6 +106,7 @@ export default async function AdminHome() {
               <Link href="/admin/blog" className="btn-ghost text-sm">센터 소식 관리</Link>
               <Link href="/admin/parent-notices" className="btn-ghost text-sm">학부모 공지</Link>
               <Link href="/admin/staff" className="btn-ghost text-sm">선생님 계정</Link>
+              <Link href="/admin/test-templates" className="btn-ghost text-sm">검사 템플릿 관리</Link>
             </>
           )}
           <LogoutButton />

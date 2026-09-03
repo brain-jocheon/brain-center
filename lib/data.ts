@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes, createHash } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession, EegTestTemplate } from "./types";
 import type { CurrentActor } from "./auth";
 import { hashParentPassword } from "./auth";
 import type { MtprisRawInput } from "./mtpris/types";
@@ -1476,7 +1476,8 @@ const ALLOWED_BRAIN_FILE_EXT: Record<string, string> = {
 const BRAIN_TEST_SELECT =
   "id, childId:child_id, testDate:test_date, counselor, fileStoragePath:file_storage_path, fileName:file_name, indicators, opinion, isPublicToParent:is_public_to_parent, createdAt:created_at, updatedAt:updated_at, " +
   "testType:test_type, testName:test_name, measuringOrg:measuring_org, measuredBy:measured_by, parentSummary:parent_summary, approvedBy:approved_by, approvedAt:approved_at, status, " +
-  "rawExtracted:raw_extracted, extractionConfidence:extraction_confidence, teacherConfirmedAt:teacher_confirmed_at, sourceFileHash:source_file_hash";
+  "rawExtracted:raw_extracted, extractionConfidence:extraction_confidence, teacherConfirmedAt:teacher_confirmed_at, sourceFileHash:source_file_hash, " +
+  "aiInterpretation:ai_interpretation, finalInterpretation:final_interpretation";
 
 /** 8단계 — 검사종류 자동완성용(기존 값 중복 제거, 최신순). getActivityNames()와 동일 패턴 */
 export async function getBrainTestTypes(): Promise<string[]> {
@@ -1549,6 +1550,9 @@ export interface BrainTestInput {
   sourceFileHash?: string;
   /** 11단계 — "확인 완료로 저장" 버튼을 누른 시각. 서버가 직접 계산해서 넣음(클라이언트 시각 안 믿음) */
   teacherConfirmedAt?: string;
+  /** 13단계 — AI 원본 해석(jsonb, 해석 API만 세팅) / 선생님이 검토해 반영한 최종 종합소견 */
+  aiInterpretation?: BrainTest["aiInterpretation"];
+  finalInterpretation?: string;
 }
 
 export async function createBrainTest(input: BrainTestInput): Promise<BrainTest> {
@@ -1605,6 +1609,8 @@ export async function updateBrainTest(
   if (patch.extractionConfidence !== undefined) row.extraction_confidence = patch.extractionConfidence;
   if (patch.sourceFileHash !== undefined) row.source_file_hash = patch.sourceFileHash;
   if (patch.teacherConfirmedAt !== undefined) row.teacher_confirmed_at = patch.teacherConfirmedAt;
+  if (patch.aiInterpretation !== undefined) row.ai_interpretation = patch.aiInterpretation;
+  if (patch.finalInterpretation !== undefined) row.final_interpretation = patch.finalInterpretation?.trim() || null;
   if (patch.status !== undefined) {
     row.status = patch.status;
     if (patch.status === "approved") {
@@ -1667,6 +1673,77 @@ export async function findDuplicateBrainTestBySourceHash(
     .maybeSingle();
   if (error) throw error;
   return (data as { id: string } | null)?.id ?? null;
+}
+
+/* ---------------- 13단계: 검사 템플릿 (eeg_test_templates) ---------------- */
+// [주의] direction이 'none'이면 기준이 없다는 뜻 — AI 해석·전후비교 화면 모두 이 경우
+// 좋다/나쁘다 판정을 하면 안 됨(스키마 자체에 있는 원칙, 코드에서도 항상 지킬 것).
+
+const EEG_TEMPLATE_SELECT =
+  "id, testType:test_type, indicatorKey:indicator_key, indicatorLabel:indicator_label, direction, " +
+  "normalRangeMin:normal_range_min, normalRangeMax:normal_range_max, aiInstruction:ai_instruction, createdAt:created_at, updatedAt:updated_at";
+
+export interface EegTestTemplateInput {
+  testType: string;
+  indicatorKey: string;
+  indicatorLabel: string;
+  direction: EegTestTemplate["direction"];
+  normalRangeMin?: number | null;
+  normalRangeMax?: number | null;
+  aiInstruction?: string;
+}
+
+export async function getEegTestTemplates(): Promise<EegTestTemplate[]> {
+  const { data, error } = await db().from("eeg_test_templates").select(EEG_TEMPLATE_SELECT).order("test_type").order("indicator_key");
+  if (error) throw error;
+  return (data ?? []) as unknown as EegTestTemplate[];
+}
+
+/** AI 해석·전후비교에서 지표 기준 조회용 — 검사종류 하나에 해당하는 템플릿만 */
+export async function getEegTestTemplatesByType(testType: string): Promise<EegTestTemplate[]> {
+  const { data, error } = await db().from("eeg_test_templates").select(EEG_TEMPLATE_SELECT).eq("test_type", testType);
+  if (error) throw error;
+  return (data ?? []) as unknown as EegTestTemplate[];
+}
+
+export async function createEegTestTemplate(input: EegTestTemplateInput): Promise<EegTestTemplate> {
+  const id = `eegtmpl_${randomBytes(6).toString("hex")}`;
+  const now = new Date().toISOString();
+  const row = {
+    id,
+    test_type: input.testType.trim(),
+    indicator_key: input.indicatorKey.trim(),
+    indicator_label: input.indicatorLabel.trim(),
+    direction: input.direction,
+    normal_range_min: input.normalRangeMin ?? null,
+    normal_range_max: input.normalRangeMax ?? null,
+    ai_instruction: input.aiInstruction?.trim() || null,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await db().from("eeg_test_templates").insert(row);
+  if (error) throw error;
+  const { data, error: fetchError } = await db().from("eeg_test_templates").select(EEG_TEMPLATE_SELECT).eq("id", id).maybeSingle();
+  if (fetchError) throw fetchError;
+  return data as unknown as EegTestTemplate;
+}
+
+export async function updateEegTestTemplate(id: string, patch: Partial<Omit<EegTestTemplateInput, "testType" | "indicatorKey">>): Promise<boolean> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.indicatorLabel !== undefined) row.indicator_label = patch.indicatorLabel.trim();
+  if (patch.direction !== undefined) row.direction = patch.direction;
+  if (patch.normalRangeMin !== undefined) row.normal_range_min = patch.normalRangeMin;
+  if (patch.normalRangeMax !== undefined) row.normal_range_max = patch.normalRangeMax;
+  if (patch.aiInstruction !== undefined) row.ai_instruction = patch.aiInstruction?.trim() || null;
+  const { data, error } = await db().from("eeg_test_templates").update(row).eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+export async function deleteEegTestTemplate(id: string): Promise<boolean> {
+  const { data, error } = await db().from("eeg_test_templates").delete().eq("id", id).select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 /* ---------------- 출결/보강 ---------------- */

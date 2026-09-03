@@ -29,6 +29,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         measuringOrg?: string;
         measuredBy?: string;
         parentSummary?: string;
+        /** [13단계] AI 해석을 검토해 선생님이 반영한 최종 종합소견 */
+        finalInterpretation?: string;
         status?: string;
         /** [11단계] true면 서버가 teacherConfirmedAt을 직접 계산해 기록(클라이언트 시각 안 믿음) */
         confirmExtraction?: boolean;
@@ -65,6 +67,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       measuringOrg: body.measuringOrg,
       measuredBy: body.measuredBy,
       parentSummary: body.parentSummary,
+      finalInterpretation: body.finalInterpretation,
       status: body.status as BrainTest["status"] | undefined,
       teacherConfirmedAt: body.confirmExtraction ? new Date().toISOString() : undefined,
     },

@@ -18,6 +18,15 @@ export type BrainTestWithFileUrl = BrainTest & { fileUrl?: string };
 
 const CONFIDENCE_LABEL: Record<string, string> = { none: "없음", low: "낮음", high: "높음" };
 
+/** [13단계] AI 해석에서 나온 학부모용 요약을 쓸 때 항상 자동으로 붙임 — 사람이 안 붙여도
+ * 되게(AI가 문구를 빼먹을 수 있어 프롬프트만 믿지 않음). */
+const AI_DISCLAIMER = "이 해석은 교육·상담 참고 자료이며 의학적 진단이 아닙니다.";
+
+function readAiField(interpretation: Record<string, unknown> | undefined, key: string): string {
+  const value = interpretation?.[key];
+  return typeof value === "string" ? value : "";
+}
+
 export default function BrainTestList({ tests, canEdit }: { tests: BrainTestWithFileUrl[]; canEdit: boolean }) {
   if (tests.length === 0) {
     return <p className="text-sm text-ink/50 py-4 text-center">아직 등록된 뇌기능검사가 없습니다.</p>;
@@ -44,10 +53,13 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
   const [indicators, setIndicators] = useState<BrainIndicator[]>(test.indicators.length ? test.indicators : [{ label: "", value: "" }]);
   const [opinion, setOpinion] = useState(test.opinion ?? "");
   const [parentSummary, setParentSummary] = useState(test.parentSummary ?? "");
+  const [finalInterpretation, setFinalInterpretation] = useState(test.finalInterpretation ?? "");
   const [isPublicToParent, setIsPublicToParent] = useState(test.isPublicToParent);
   const [extracting, setExtracting] = useState(false);
   const [extractWarnings, setExtractWarnings] = useState<{ duplicate?: string; nameMismatch?: string } | null>(null);
   const [extractError, setExtractError] = useState("");
+  const [interpreting, setInterpreting] = useState(false);
+  const [interpretError, setInterpretError] = useState("");
   const router = useRouter();
 
   const candidateIndicators = useMemo(() => deriveCandidateIndicators(test.rawExtracted ?? null), [test.rawExtracted]);
@@ -76,6 +88,36 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
     router.refresh();
   }
 
+  async function handleInterpret() {
+    setInterpreting(true);
+    setInterpretError("");
+    const res = await fetch(`/api/admin/brain-tests/${test.id}/interpret`, { method: "POST" });
+    const data = await res.json().catch(() => null);
+    setInterpreting(false);
+    if (!res.ok || !data?.ok) {
+      setInterpretError(data?.message || "AI 해석 생성에 실패했습니다.");
+      return;
+    }
+    setEditing(true);
+    router.refresh();
+  }
+
+  function useParentSummaryFromAi(aiInterpretation: Record<string, unknown> | undefined) {
+    const text = readAiField(aiInterpretation, "parentSummary");
+    if (!text) return;
+    setParentSummary(`${text}\n\n${AI_DISCLAIMER}`);
+  }
+
+  function useSummaryAsFinalInterpretation(aiInterpretation: Record<string, unknown> | undefined) {
+    const parts = [
+      readAiField(aiInterpretation, "summary"),
+      readAiField(aiInterpretation, "strengths") && `강점: ${readAiField(aiInterpretation, "strengths")}`,
+      readAiField(aiInterpretation, "attentionAreas") && `주의영역: ${readAiField(aiInterpretation, "attentionAreas")}`,
+    ].filter(Boolean);
+    if (parts.length === 0) return;
+    setFinalInterpretation(parts.join("\n\n"));
+  }
+
   async function handleConfirmExtraction() {
     setSaving(true);
     setMessage("");
@@ -84,7 +126,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         indicators, opinion, isPublicToParent,
-        testType, testName, measuringOrg, measuredBy, parentSummary,
+        testType, testName, measuringOrg, measuredBy, parentSummary, finalInterpretation,
         status: "confirmed", confirmExtraction: true,
       }),
     });
@@ -116,7 +158,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         indicators, opinion, isPublicToParent,
-        testType, testName, measuringOrg, measuredBy, parentSummary, status,
+        testType, testName, measuringOrg, measuredBy, parentSummary, finalInterpretation, status,
       }),
     });
     setSaving(false);
@@ -175,6 +217,11 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
               {extracting ? "추출 중..." : test.rawExtracted ? "다시 추출" : "자동 추출 시도"}
             </button>
           )}
+          {canEdit && test.indicators.length > 0 && (
+            <button className="text-xs text-sage-600 underline underline-offset-2" disabled={interpreting} onClick={handleInterpret}>
+              {interpreting ? "해석 생성 중..." : test.aiInterpretation ? "AI 해석 다시 생성" : "AI 해석 생성"}
+            </button>
+          )}
           {canEdit && (
             <>
               <button className="text-xs text-sage-600 underline underline-offset-2" onClick={() => setEditing((v) => !v)}>수정</button>
@@ -185,6 +232,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
       </div>
 
       {extractError && <p className="text-xs text-apricot-600 mb-2">{extractError}</p>}
+      {interpretError && <p className="text-xs text-apricot-600 mb-2">{interpretError}</p>}
 
       {!editing && (
         <>
@@ -203,6 +251,11 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
             </div>
           )}
           {test.opinion && <p className="text-sm text-ink/80 whitespace-pre-wrap leading-relaxed">{test.opinion}</p>}
+          {test.finalInterpretation && (
+            <p className="text-sm text-ink/80 whitespace-pre-wrap leading-relaxed mt-2">
+              <span className="font-medium">종합소견</span> {test.finalInterpretation}
+            </p>
+          )}
           {test.parentSummary && (
             <p className="text-xs text-sage-700 bg-sage-50 rounded-lg p-2 mt-2 whitespace-pre-wrap leading-relaxed">
               <span className="font-medium">학부모 공개용 요약</span> {test.parentSummary}
@@ -248,6 +301,23 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
               )}
             </div>
           )}
+          {test.aiInterpretation && (
+            <div className="rounded-lg bg-sage-50 border border-sage-100 p-3 space-y-2">
+              <p className="text-xs font-medium text-sage-700">AI 해석 (검토 후 반영해 주세요 — 자동으로 저장되지 않습니다)</p>
+              <p className="text-xs text-ink/70 whitespace-pre-wrap"><span className="font-medium">요약</span> {readAiField(test.aiInterpretation, "summary")}</p>
+              <p className="text-xs text-ink/70 whitespace-pre-wrap"><span className="font-medium">강점</span> {readAiField(test.aiInterpretation, "strengths")}</p>
+              <p className="text-xs text-ink/70 whitespace-pre-wrap"><span className="font-medium">주의영역</span> {readAiField(test.aiInterpretation, "attentionAreas")}</p>
+              <p className="text-xs text-ink/70 whitespace-pre-wrap"><span className="font-medium">학부모용</span> {readAiField(test.aiInterpretation, "parentSummary")}</p>
+              <div className="flex gap-3">
+                <button type="button" className="text-[11px] text-sage-700 underline underline-offset-2" onClick={() => useParentSummaryFromAi(test.aiInterpretation)}>
+                  학부모용 요약 사용(면책문구 자동 포함)
+                </button>
+                <button type="button" className="text-[11px] text-sage-700 underline underline-offset-2" onClick={() => useSummaryAsFinalInterpretation(test.aiInterpretation)}>
+                  종합소견에 반영
+                </button>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input className="input !py-2 text-sm" placeholder="검사 종류" value={testType} onChange={(e) => setTestType(e.target.value)} />
             <input className="input !py-2 text-sm" placeholder="검사명" value={testName} onChange={(e) => setTestName(e.target.value)} />
@@ -268,6 +338,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
           ))}
           <button type="button" className="text-xs text-sage-600 underline underline-offset-2" onClick={addIndicator}>+ 지표 추가</button>
           <textarea className="input min-h-24 text-sm" placeholder="의견(내부용)" value={opinion} onChange={(e) => setOpinion(e.target.value)} />
+          <textarea className="input min-h-16 text-sm" placeholder="AI 해석 기반 종합소견(선택)" value={finalInterpretation} onChange={(e) => setFinalInterpretation(e.target.value)} />
           <textarea className="input min-h-16 text-sm" placeholder="학부모 공개용 요약(선택)" value={parentSummary} onChange={(e) => setParentSummary(e.target.value)} />
           <label className="flex items-center gap-2 text-xs">
             <input type="checkbox" checked={isPublicToParent} onChange={(e) => setIsPublicToParent(e.target.checked)} />

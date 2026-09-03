@@ -21,3 +21,34 @@ export type ClassRecordDraftResult =
   | { status: "not_configured" }
   | { status: "error"; message: string }
   | { status: "ok"; detail: string; parent: string; guidance: string; model: string; tokensUsed?: number };
+
+/** 13단계 — AI 검사해석 입력. 템플릿(eeg_test_templates) 매칭 결과까지 포함해서 넘김 */
+export interface EegInterpretationIndicator {
+  label: string;
+  value: string;
+  normalRangeMin?: number;
+  normalRangeMax?: number;
+  /** 'none'이면 이 지표는 좋다/나쁘다 판단 근거가 없다는 뜻 — AI에게도 그렇게 명시해서 넘김 */
+  direction: "higher_better" | "lower_better" | "none";
+  aiInstruction?: string;
+}
+
+export interface EegInterpretationInput {
+  childName: string;
+  testType: string;
+  testName?: string;
+  indicators: EegInterpretationIndicator[];
+}
+
+export type EegInterpretationResult =
+  | { status: "not_configured" }
+  | { status: "error"; message: string }
+  | {
+      status: "ok";
+      summary: string;
+      strengths: string;
+      attentionAreas: string;
+      parentSummary: string;
+      model: string;
+      tokensUsed?: number;
+    };
