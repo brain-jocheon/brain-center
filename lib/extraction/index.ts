@@ -25,6 +25,7 @@ export async function extractFromFile(buffer: Buffer, ext: string): Promise<Extr
     const candidateCount = deriveCandidateIndicators(rawExtracted).length;
     return { status: "ok", rawExtracted, confidence: scoreConfidence(candidateCount) };
   } catch (e) {
+    console.error("[extraction] extractFromFile failed:", e);
     const message = e instanceof Error ? e.message : "알 수 없는 오류";
     return { status: "error", message: `파일을 읽는 중 문제가 발생했습니다: ${message}` };
   }

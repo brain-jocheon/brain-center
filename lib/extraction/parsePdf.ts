@@ -11,6 +11,8 @@
  * 소용없어짐(실제로 이렇게 배포했다가 프로덕션에서 재현됨). 그래서 pdf-parse는 동적 import로
  * 미루고, 순수 JS DOMMatrix 폴리필(dommatrix 패키지)을 그 앞에서 먼저 확실히 실행한다.
  */
+import { pathToFileURL } from "url";
+import path from "path";
 import type { RawExtracted } from "./types";
 
 async function ensureDomMatrixPolyfill(): Promise<void> {
@@ -19,8 +21,27 @@ async function ensureDomMatrixPolyfill(): Promise<void> {
   (globalThis as { DOMMatrix?: unknown }).DOMMatrix = DOMMatrixPolyfill;
 }
 
+/** pdfjs-dist는 "./pdf.worker.mjs"라는 상대경로로 워커 파일을 찾는데, Vercel 서버리스
+ * 번들에서는 이 상대경로가 실제 파일 위치와 안 맞아 "Cannot find module"로 실패한다
+ * (프로덕션에서 확인됨) — 절대경로를 직접 계산해 지정한다.
+ * [주의] `createRequire(import.meta.url).resolve(...)`로 계산하면 이 파일 자신이
+ * webpack에 번들링되면서 import.meta.url이 원래 소스 위치가 아닌 번들 결과물 위치를
+ * 가리키게 돼 실패한다(확인됨) — 대신 `process.cwd()`를 기준으로 잡는다. Next.js 앱은
+ * 로컬/Vercel 둘 다 프로젝트 루트(= node_modules가 있는 위치)에서 실행되므로 안정적이다.
+ * [주의] 문자열 리터럴 `require.resolve("pdfjs-dist/...")`를 그대로 쓰면 webpack이
+ * 정적 분석해서 순수 ESM 파일을 직접 번들링하려다 빌드가 깨짐(확인됨) — 그래서 require
+ * 자체를 아예 안 쓰고 path.join으로 직접 조립한다. */
+async function ensureWorkerSrc(): Promise<void> {
+  const { PDFParse } = await import("pdf-parse");
+  const workerPath = path.join(process.cwd(), "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs");
+  // [주의] Node의 동적 import()는 절대경로를 그대로 받지 않고 file:// URL을 요구함
+  // (Windows에서 "C:\..." 형태를 그대로 넘기면 프로토콜 오류로 실패 — 로컬에서 확인됨).
+  PDFParse.setWorker(pathToFileURL(workerPath).href);
+}
+
 export async function parsePdfBuffer(buffer: Buffer): Promise<RawExtracted> {
   await ensureDomMatrixPolyfill();
+  await ensureWorkerSrc();
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   try {
