@@ -12,25 +12,37 @@ import type {
   ClassRecordDraftResult,
   EegInterpretationInput,
   EegInterpretationResult,
+  VisionExtractionInput,
+  VisionExtractionResult,
 } from "./types";
 
 const DEFAULT_MODEL = "claude-sonnet-5";
 const TIMEOUT_MS = 20000;
+/** [12단계] 이미지/PDF를 읽는 건 텍스트만 다룰 때보다 오래 걸릴 수 있어 타임아웃을 넉넉히 둠 */
+const VISION_TIMEOUT_MS = 40000;
 
 /* ---------------- Anthropic 호출 공용 헬퍼 (재시도·타임아웃·응답파싱) ---------------- */
+
+/** [12단계] 텍스트 프롬프트만 보내던 걸 이미지/문서도 보낼 수 있게 확장 — Anthropic Messages API의
+ * content 블록 형식 그대로(union을 상세히 타이핑하지 않고 필요한 형태만 최소로 표현) */
+type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } };
 
 interface AnthropicCallOptions {
   apiKey: string;
   model: string;
   system: string;
-  userContent: string;
+  userContent: string | AnthropicContentBlock[];
   maxTokens?: number;
   temperature?: number;
+  timeoutMs?: number;
 }
 
 async function callAnthropic(opts: AnthropicCallOptions): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS);
   try {
     return await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -239,4 +251,65 @@ export async function generateEegInterpretation(input: EegInterpretationInput): 
   if (!interpretation) return { status: "error", message: "AI 응답 형식이 올바르지 않습니다." };
 
   return { status: "ok", ...interpretation, model, tokensUsed: result.tokensUsed };
+}
+
+/* ---------------- 12단계: 이미지/스캔PDF 인식 (Claude Vision) ---------------- */
+// [설계] 로컬에서 PDF를 이미지로 렌더링하지 않는다(11단계에서 겪은 @napi-rs/canvas 네이티브
+// 의존성 문제를 다시 밟게 됨) — 이미지 파일은 image 블록으로, PDF 원본은 document 블록으로
+// 바이트 그대로 Anthropic에 보내고 Claude가 직접 읽게 한다.
+
+const VISION_SYSTEM_PROMPT = `당신은 아동 학습심리센터의 검사지 스캔본/사진을 읽는 보조 도구입니다.
+반드시 아래 규칙을 지키세요:
+1. 보이는 텍스트를 있는 그대로 옮겨 적으세요(text 필드). 안 보이거나 불확실한 내용은 지어내지 마세요.
+2. "지표명: 값" 형태로 보이는 항목들을 후보로 뽑으세요(candidates 필드) — 표나 수치로 된 항목만, 확실하지 않으면 빼세요.
+3. 출력은 반드시 아래 JSON 형식 하나만 반환하세요. 마크다운 코드펜스나 다른 설명 텍스트를 절대 포함하지 마세요.
+{"text":"...","candidates":[{"label":"...","value":"..."}]}`;
+
+function parseVisionExtractionJson(
+  text: string
+): { text: string; candidates: { label: string; value: string }[] } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.trim());
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.text !== "string" || !obj.text.trim()) return null;
+  const candidates = Array.isArray(obj.candidates)
+    ? obj.candidates
+        .filter(
+          (c): c is { label: unknown; value: unknown } => !!c && typeof c === "object"
+        )
+        .map((c) => ({ label: String(c.label ?? "").trim(), value: String(c.value ?? "").trim() }))
+        .filter((c) => c.label && c.value)
+    : [];
+  return { text: obj.text.trim(), candidates };
+}
+
+export async function extractViaVision(input: VisionExtractionInput): Promise<VisionExtractionResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { status: "not_configured" };
+  const model = process.env.AI_MODEL?.trim() || DEFAULT_MODEL;
+
+  const fileBlock: AnthropicContentBlock =
+    input.kind === "image"
+      ? { type: "image", source: { type: "base64", media_type: input.mediaType, data: input.base64 } }
+      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: input.base64 } };
+
+  const result = await callAnthropicWithRetry({
+    apiKey,
+    model,
+    system: VISION_SYSTEM_PROMPT,
+    userContent: [fileBlock, { type: "text", text: "위 파일에서 텍스트와 지표 후보를 뽑아 주세요." }],
+    maxTokens: 1500,
+    timeoutMs: VISION_TIMEOUT_MS,
+  });
+  if (result.status === "error") return result;
+
+  const extracted = parseVisionExtractionJson(result.text);
+  if (!extracted) return { status: "error", message: "AI 응답 형식이 올바르지 않습니다." };
+
+  return { status: "ok", ...extracted, model, tokensUsed: result.tokensUsed };
 }

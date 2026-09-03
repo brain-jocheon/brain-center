@@ -509,7 +509,7 @@ export interface EegTrainingSession {
 /** AI 호출 이력 — 이름/생년월일 등은 저장하지 않고 해시만(개인정보 최소화) */
 export interface AiGenerationLog {
   id: string;
-  feature: "class_record" | "eeg_interpretation";
+  feature: "class_record" | "eeg_interpretation" | "vision_extraction";
   targetId: string;
   staffId?: string;
   model?: string;

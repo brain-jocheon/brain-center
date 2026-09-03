@@ -52,3 +52,22 @@ export type EegInterpretationResult =
       model: string;
       tokensUsed?: number;
     };
+
+/** 12단계 — 이미지/스캔PDF를 Claude Vision으로 직접 읽음(로컬 렌더링 없음) */
+export interface VisionExtractionInput {
+  base64: string;
+  mediaType: string;
+  /** "image"면 image 콘텐츠 블록, "pdf"면 document 콘텐츠 블록으로 전송 */
+  kind: "image" | "pdf";
+}
+
+export type VisionExtractionResult =
+  | { status: "not_configured" }
+  | { status: "error"; message: string }
+  | {
+      status: "ok";
+      text: string;
+      candidates: { label: string; value: string }[];
+      model: string;
+      tokensUsed?: number;
+    };

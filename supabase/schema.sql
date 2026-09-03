@@ -669,3 +669,10 @@ to service_role;
 -- 7단계: RBAC(선생님 계정) — staff.phone을 로그인 식별자로 사용
 -- =====================================================================
 create unique index if not exists staff_phone_idx on staff(phone) where phone is not null;
+
+-- =====================================================================
+-- 12단계: 이미지/스캔PDF 인식(Claude Vision) — ai_generation_logs에 새 feature 값 추가
+-- =====================================================================
+alter table ai_generation_logs drop constraint if exists ai_generation_logs_feature_check;
+alter table ai_generation_logs add constraint ai_generation_logs_feature_check
+  check (feature in ('class_record', 'eeg_interpretation', 'vision_extraction'));

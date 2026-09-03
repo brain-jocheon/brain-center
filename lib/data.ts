@@ -943,7 +943,7 @@ export async function getPublicChildComments(childId: string): Promise<ParentChi
 
 /** 단발성 호출 결과를 한 번에 기록 — pending 상태 없이 결과가 나온 시점에 딱 한 번 insert */
 export async function logAiGeneration(input: {
-  feature: "class_record" | "eeg_interpretation";
+  feature: "class_record" | "eeg_interpretation" | "vision_extraction";
   targetId: string;
   staffId?: string;
   model?: string;
@@ -1471,6 +1471,11 @@ const ALLOWED_BRAIN_FILE_EXT: Record<string, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   xls: "application/vnd.ms-excel",
   csv: "text/csv",
+  // [12단계] 스캔/사진 검사지 — Claude Vision으로 읽음(app/api/admin/brain-tests/[id]/extract)
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
 };
 
 const BRAIN_TEST_SELECT =
@@ -1520,7 +1525,7 @@ export async function createBrainFileUploadTarget(
   const ext = extFromBrainFilename(filename);
   const expectedMime = ALLOWED_BRAIN_FILE_EXT[ext];
   if (!expectedMime || expectedMime !== contentType) {
-    throw new Error("허용되지 않는 파일 형식입니다. (PDF, Excel(xlsx/xls), CSV만 가능)");
+    throw new Error("허용되지 않는 파일 형식입니다. (PDF, Excel(xlsx/xls), CSV, 이미지(jpg/png/webp)만 가능)");
   }
   const path = `${childId}/${randomBytes(8).toString("hex")}.${ext}`;
   const { data, error } = await db().storage.from(BRAIN_TEST_BUCKET).createSignedUploadUrl(path);

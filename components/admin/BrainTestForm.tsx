@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * 뇌기능검사 등록 폼 — PDF/Excel/CSV 보고서 업로드(선택) + 지표(자유 입력) + 의견.
+ * 뇌기능검사 등록 폼 — PDF/Excel/CSV/이미지 보고서 업로드(선택) + 지표(자유 입력) + 의견.
  * [흐름] 파일이 있으면: (1) 서명 업로드 URL 발급 → (2) 브라우저에서 Storage로 직접 업로드 →
  * (3) 서버에 메타데이터(지표·의견 포함) 저장. 파일 없이 지표·의견만 저장하는 것도 허용합니다.
  *
  * [11단계] 등록 후 목록(BrainTestList)에서 "자동 추출 시도"를 누르면 파일에서 텍스트/표를
  * 뽑아 지표 후보를 보여주지만, 여전히 사람이 골라야만 실제 지표에 반영됩니다(자동 확정 없음).
+ * [12단계] 이미지(jpg/png/webp)나 텍스트 없는 스캔PDF는 Claude Vision으로 읽음 — 이 경로만
+ * 실제 AI 비용이 듦(목록 화면의 버튼 문구로 구분해서 보여줌).
  */
 
 import { useRef, useState } from "react";
@@ -18,7 +20,7 @@ import type { BrainTest } from "@/lib/types";
 
 const BRAIN_TEST_BUCKET = "brain-test-files";
 const MAIN_INDICATOR_LABELS = Object.keys(BRAIN_INDICATOR_DESCRIPTIONS);
-const ALLOWED_EXT = ["pdf", "xlsx", "xls", "csv"];
+const ALLOWED_EXT = ["pdf", "xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 
 export default function BrainTestForm({ childId, testTypeSuggestions }: { childId: string; testTypeSuggestions: string[] }) {
@@ -88,7 +90,7 @@ export default function BrainTestForm({ childId, testTypeSuggestions }: { childI
     if (file) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
       if (!ALLOWED_EXT.includes(ext)) {
-        setMessage("PDF, Excel(xlsx/xls), CSV 파일만 업로드할 수 있습니다.");
+        setMessage("PDF, Excel(xlsx/xls), CSV, 이미지(jpg/png/webp) 파일만 업로드할 수 있습니다.");
         setSaving(false);
         return;
       }
@@ -159,12 +161,12 @@ export default function BrainTestForm({ childId, testTypeSuggestions }: { childI
       <p className="section-label mb-4">뇌기능검사 등록</p>
 
       <label className="block mb-4">
-        <span className="block text-sm font-medium mb-1.5">검사 보고서 파일 (PDF/Excel/CSV, 선택, 15MB 이하)</span>
+        <span className="block text-sm font-medium mb-1.5">검사 보고서 파일 (PDF/Excel/CSV/이미지, 선택, 15MB 이하)</span>
         <input
           ref={fileInputRef}
           className="input"
           type="file"
-          accept="application/pdf,.xlsx,.xls,.csv"
+          accept="application/pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.webp"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
         {file && <p className="text-xs text-ink/50 mt-1">{file.name}</p>}

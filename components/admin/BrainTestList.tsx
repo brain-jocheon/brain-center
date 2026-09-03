@@ -6,6 +6,8 @@
  * API 자체도 관리자 전용으로 막혀 있지만(app/api/admin/brain-tests), 애초에 못 누르게.
  * [11단계] "자동 추출 시도"는 파일에서 텍스트/표를 뽑아 지표 후보를 보여줄 뿐, 사람이
  * 후보를 직접 골라 눌러야만(칩 클릭) 실제 지표에 반영됨 — 자동으로 확정되지 않음.
+ * [12단계] 이미지·"AI 이미지 인식" 경로는 Claude Vision을 호출해 실제 AI 비용이 든다 —
+ * 버튼 문구에 "(비용 발생)"을 명시해서 무료 추출과 헷갈리지 않게 함.
  */
 
 import { useMemo, useState } from "react";
@@ -17,6 +19,7 @@ import { deriveCandidateIndicators } from "@/lib/extraction/heuristics";
 export type BrainTestWithFileUrl = BrainTest & { fileUrl?: string };
 
 const CONFIDENCE_LABEL: Record<string, string> = { none: "없음", low: "낮음", high: "높음" };
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 /** [13단계] AI 해석에서 나온 학부모용 요약을 쓸 때 항상 자동으로 붙임 — 사람이 안 붙여도
  * 되게(AI가 문구를 빼먹을 수 있어 프롬프트만 믿지 않음). */
@@ -63,6 +66,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
   const router = useRouter();
 
   const candidateIndicators = useMemo(() => deriveCandidateIndicators(test.rawExtracted ?? null), [test.rawExtracted]);
+  const fileExt = (test.fileName ?? test.fileStoragePath ?? "").split(".").pop()?.toLowerCase() ?? "";
 
   function addCandidateAsIndicator(candidate: { label: string; value: string }) {
     setIndicators((prev) => {
@@ -72,11 +76,15 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
     });
   }
 
-  async function handleExtract() {
+  async function handleExtract(mode?: "vision") {
     setExtracting(true);
     setExtractError("");
     setExtractWarnings(null);
-    const res = await fetch(`/api/admin/brain-tests/${test.id}/extract`, { method: "POST" });
+    const res = await fetch(`/api/admin/brain-tests/${test.id}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mode ? { mode } : {}),
+    });
     const data = await res.json().catch(() => null);
     setExtracting(false);
     if (!res.ok || !data?.ok) {
@@ -213,8 +221,17 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
             </a>
           )}
           {canEdit && test.fileStoragePath && (
-            <button className="text-xs text-sage-600 underline underline-offset-2" disabled={extracting} onClick={handleExtract}>
-              {extracting ? "추출 중..." : test.rawExtracted ? "다시 추출" : "자동 추출 시도"}
+            <button className="text-xs text-sage-600 underline underline-offset-2" disabled={extracting} onClick={() => handleExtract()}>
+              {extracting
+                ? "추출 중..."
+                : IMAGE_EXTS.has(fileExt)
+                ? test.rawExtracted ? "AI로 다시 인식(비용 발생)" : "AI로 인식 시도(비용 발생)"
+                : test.rawExtracted ? "다시 추출" : "자동 추출 시도"}
+            </button>
+          )}
+          {canEdit && fileExt === "pdf" && test.extractionConfidence === "none" && (
+            <button className="text-xs text-sky-700 underline underline-offset-2" disabled={extracting} onClick={() => handleExtract("vision")}>
+              {extracting ? "인식 중..." : "AI 이미지 인식으로 재시도(비용 발생)"}
             </button>
           )}
           {canEdit && test.indicators.length > 0 && (
@@ -293,7 +310,7 @@ function BrainTestCard({ test, canEdit }: { test: BrainTestWithFileUrl; canEdit:
                   ))}
                 </div>
               )}
-              {test.rawExtracted.type === "pdf" && (
+              {(test.rawExtracted.type === "pdf" || test.rawExtracted.type === "vision") && (
                 <details className="text-xs text-ink/50">
                   <summary className="cursor-pointer text-sky-700">원본 추출 텍스트 보기</summary>
                   <pre className="whitespace-pre-wrap mt-1 max-h-48 overflow-y-auto">{test.rawExtracted.text}</pre>

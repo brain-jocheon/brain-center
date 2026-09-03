@@ -81,6 +81,11 @@ export function deriveCandidateIndicators(rawExtracted: RawExtracted | null | un
     return candidates;
   }
 
+  if (rawExtracted.type === "vision") {
+    // [12단계] Claude Vision이 이미 라벨/값을 직접 뽑아준 결과라 정규식 재추론을 안 함(더 정확함)
+    return rawExtracted.candidates;
+  }
+
   return [];
 }
 
@@ -95,7 +100,7 @@ export function scoreConfidence(candidateCount: number): ExtractionConfidence {
 export function textContainsName(rawExtracted: RawExtracted | null | undefined, name: string): boolean {
   if (!rawExtracted || !name.trim()) return true; // 판단 불가 시 경고를 띄우지 않음(오탐 방지)
   const haystack =
-    rawExtracted.type === "pdf"
+    rawExtracted.type === "pdf" || rawExtracted.type === "vision"
       ? rawExtracted.text
       : Object.values(rawExtracted.sheets)
           .flat()
