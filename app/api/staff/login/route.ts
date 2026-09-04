@@ -10,7 +10,7 @@
  */
 import { NextResponse } from "next/server";
 import { createStaffSessionToken, verifyParentPassword, STAFF_SESSION_COOKIE } from "@/lib/auth";
-import { getStaffByPhone, logFailedStaffLogin, countRecentFailedStaffLogins } from "@/lib/data";
+import { getStaffByPhone, logFailedStaffLogin, countRecentFailedStaffLogins, writeAuditLog } from "@/lib/data";
 
 const RATE_LIMIT_WINDOW_MIN = 10;
 const RATE_LIMIT_MAX_FAILURES = 8;
@@ -37,6 +37,14 @@ export async function POST(req: Request) {
     await logFailedStaffLogin(ip);
     return NextResponse.json({ message: "전화번호 또는 비밀번호가 맞지 않습니다." }, { status: 401 });
   }
+
+  await writeAuditLog({
+    actorStaffId: staff.id,
+    actorLabel: `${staff.name}(${staff.role})`,
+    action: "staff_login_success",
+    targetTable: "staff",
+    targetId: staff.id,
+  });
 
   const res = NextResponse.json({ ok: true, role: staff.role });
   res.cookies.set(STAFF_SESSION_COOKIE, createStaffSessionToken(staff.id, staff.role), {

@@ -525,6 +525,8 @@ export interface AiGenerationLog {
 export interface AuditLog {
   id: string;
   actorStaffId?: string;
+  /** [14단계] 사람이 읽는 행위자 표시용 — legacy_admin은 staff 행이 없어 actorStaffId로 join 불가하므로 별도 저장 */
+  actorLabel?: string;
   action: string;
   targetTable: string;
   targetId?: string;

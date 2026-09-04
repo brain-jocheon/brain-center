@@ -15,5 +15,19 @@ const nextConfig = {
       "/api/admin/brain-tests/[id]/extract": ["node_modules/pdfjs-dist/legacy/build/**"],
     },
   },
+  // [14단계/보안] 표준적이고 안전한 헤더 3개만 추가. 전체 CSP는 스크립트/스타일 소스 전수조사가
+  // 필요해서(잘못 설정하면 기존 화면이 깨질 위험) 이번엔 하지 않음 — README에 향후 과제로 기록.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
 };
 module.exports = nextConfig;

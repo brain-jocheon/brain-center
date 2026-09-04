@@ -3,7 +3,7 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
-import { deleteBrainTest, deleteBrainFile, updateBrainTest, getStaffById } from "@/lib/data";
+import { deleteBrainTest, deleteBrainFile, updateBrainTest, getStaffById, getBrainTest, writeAuditLog } from "@/lib/data";
 import type { BrainIndicator, BrainTest } from "@/lib/types";
 
 const STATUS_VALUES: BrainTest["status"][] = [
@@ -80,12 +80,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isFullAdmin(getCurrentActor())) {
+  const actor = getCurrentActor();
+  if (!isFullAdmin(actor)) {
     return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
-  const storagePath = await deleteBrainTest(params.id);
-  if (storagePath === null) {
+  // [14단계/보안] 삭제 전 전체 스냅샷 확보 — 하드삭제라 이게 없으면 삭제 후엔 영영 복구 근거가 없음
+  const before = await getBrainTest(params.id);
+
+  const { found, storagePath } = await deleteBrainTest(params.id);
+  if (!found) {
     return NextResponse.json({ message: "뇌기능검사를 찾을 수 없습니다." }, { status: 404 });
   }
 
@@ -96,6 +100,17 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       // [주의] Storage 파일 삭제 실패는 무시 — DB 행은 이미 지워졌으므로 화면/링크에서는 즉시 사라짐
     }
   }
+
+  const actorLabel =
+    actor?.kind === "staff" ? `${(await getStaffById(actor.staffId))?.name ?? "관리자"}(${actor.role})` : "관리자(공용계정)";
+  await writeAuditLog({
+    actorStaffId: actor?.kind === "staff" ? actor.staffId : undefined,
+    actorLabel,
+    action: "brain_test_deleted",
+    targetTable: "brain_tests",
+    targetId: params.id,
+    before: (before as unknown as Record<string, unknown>) ?? undefined,
+  });
 
   return NextResponse.json({ ok: true });
 }

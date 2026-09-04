@@ -43,6 +43,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/visits",
   "/admin/feedback",
   "/admin/makeup-requests",
+  "/admin/audit-logs",
 ];
 
 export async function middleware(req: NextRequest) {

@@ -4,7 +4,7 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
-import { deleteChild, getChild, updateChild } from "@/lib/data";
+import { deleteChild, getChild, updateChild, getStaffById, writeAuditLog } from "@/lib/data";
 
 const STATUS_VALUES = ["active", "waiting", "ended"] as const;
 
@@ -68,7 +68,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  if (!isFullAdmin(getCurrentActor())) {
+  const actor = getCurrentActor();
+  if (!isFullAdmin(actor)) {
     return NextResponse.json({ message: "권한이 없습니다." }, { status: 403 });
   }
 
@@ -78,5 +79,19 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
 
   await deleteChild(params.id);
+
+  // [14단계/보안] 하드삭제라 DB에는 안 남지만, 삭제 직전 전체 스냅샷을 감사로그에 남겨
+  // 최소한 "누가 언제 무엇을 지웠는지"는 확인 가능하게 함(원클릭 복구는 아님).
+  const actorLabel =
+    actor?.kind === "staff" ? `${(await getStaffById(actor.staffId))?.name ?? "관리자"}(${actor.role})` : "관리자(공용계정)";
+  await writeAuditLog({
+    actorStaffId: actor?.kind === "staff" ? actor.staffId : undefined,
+    actorLabel,
+    action: "child_deleted",
+    targetTable: "children",
+    targetId: params.id,
+    before: existing as unknown as Record<string, unknown>,
+  });
+
   return NextResponse.json({ ok: true });
 }

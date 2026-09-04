@@ -676,3 +676,9 @@ create unique index if not exists staff_phone_idx on staff(phone) where phone is
 alter table ai_generation_logs drop constraint if exists ai_generation_logs_feature_check;
 alter table ai_generation_logs add constraint ai_generation_logs_feature_check
   check (feature in ('class_record', 'eeg_interpretation', 'vision_extraction'));
+
+-- =====================================================================
+-- 14단계: 감사로그 — legacy_admin(공용계정)은 staff 행이 없어 actor_staff_id로
+-- join할 수 없으므로, 사람이 읽는 행위자 표시용 컬럼을 별도로 둔다.
+-- =====================================================================
+alter table audit_logs add column if not exists actor_label text;

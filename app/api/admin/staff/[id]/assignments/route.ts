@@ -4,7 +4,11 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
-import { assignChildToStaff, unassignChildFromStaff, getChild } from "@/lib/data";
+import { assignChildToStaff, unassignChildFromStaff, getChild, getStaffById, writeAuditLog } from "@/lib/data";
+
+async function actorLabelOf(actor: ReturnType<typeof getCurrentActor>): Promise<string> {
+  return actor?.kind === "staff" ? `${(await getStaffById(actor.staffId))?.name ?? "관리자"}(${actor.role})` : "관리자(공용계정)";
+}
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const actor = getCurrentActor();
@@ -23,6 +27,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   await assignChildToStaff(childId, params.id);
+  await writeAuditLog({
+    actorStaffId: actor?.kind === "staff" ? actor.staffId : undefined,
+    actorLabel: await actorLabelOf(actor),
+    action: "staff_assignment_changed",
+    targetTable: "child_staff_assignments",
+    targetId: `${params.id}:${childId}`,
+    after: { childId, staffId: params.id, childName: child.name, op: "assigned" },
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -38,5 +50,13 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   }
 
   await unassignChildFromStaff(childId, params.id);
+  await writeAuditLog({
+    actorStaffId: actor?.kind === "staff" ? actor.staffId : undefined,
+    actorLabel: await actorLabelOf(actor),
+    action: "staff_assignment_changed",
+    targetTable: "child_staff_assignments",
+    targetId: `${params.id}:${childId}`,
+    after: { childId, staffId: params.id, op: "unassigned" },
+  });
   return NextResponse.json({ ok: true });
 }

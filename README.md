@@ -15,7 +15,10 @@
 데이터는 Supabase에 저장됩니다 (JSON 파일 방식에서 전환됨, 6번 참고). 처음 실행 전에:
 
 1. Supabase 프로젝트를 만들고 `supabase/schema.sql`을 SQL Editor에서 실행합니다.
-2. `.env.local`에 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`, `SESSION_SECRET`을 채웁니다.
+2. `.env.example`을 복사해 `.env.local`을 만들고 값을 채웁니다. 필수: `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `ADMIN_PASSWORD`, `SESSION_SECRET`. 선택(AI 기능, 없어도 앱은 정상 동작하고 AI 버튼만
+   "준비중" 안내로 대체됨): `ANTHROPIC_API_KEY`, `AI_MODEL`.
 
 ```bash
 # 1) 프로젝트 폴더에서 필요한 프로그램 설치 (처음 한 번만)
@@ -124,7 +127,13 @@ brain-center/
 6. **실제 운영 배포 시 필수**
    - HTTPS 도메인에서만 운영 (Vercel은 기본 제공)
    - ~~JSON 파일 → 데이터베이스 전환~~ / ~~bcrypt 업그레이드~~ — 완료됨 (6번 참고)
-   - 아직 없음: 로그인 연속 실패 시 잠금 (관리자/학부모 모두). 필요해지면 추가 검토
+   - ~~로그인 연속 실패 시 잠금~~ — 완료됨. 관리자·선생님 로그인 모두 IP당 10분 8회 초과 시 429,
+     성공/실패 모두 `/admin/audit-logs`(관리자 전용 감사로그 화면)에 기록됩니다.
+   - 기본 HTTP 보안 헤더(`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) 적용됨
+     (`next.config.js`). 전체 CSP(Content-Security-Policy)는 아직 없음 — 스크립트/스타일 소스를
+     전수조사해야 안전하게 설정할 수 있어 향후 과제로 남겨둠.
+   - 아직 없음: 아동/뇌기능검사 삭제는 소프트삭제가 아니라 완전 삭제입니다(감사로그에 삭제 직전
+     스냅샷은 남지만, 원클릭 복구 기능은 없음). 실수 삭제가 걱정되면 삭제 전 감사로그를 먼저 확인하세요.
 
 ## 5. MT-PRIS(다원재능) 리포트 — 자동 생성형 검사
 
@@ -213,12 +222,28 @@ JSON 파일 저장 방식에서 Supabase(Postgres)로 전환 완료. 화면·API
 ### 처음 연결하는 방법
 1. [supabase.com](https://supabase.com)에서 새 프로젝트 생성
 2. 프로젝트의 SQL Editor에 `supabase/schema.sql` 전체를 붙여넣고 실행
-   (5개 테이블: `children`, `reports`, `mtpris_reports`, `access_tokens`, `access_logs`)
+   (초기 5개 테이블 `children`/`reports`/`mtpris_reports`/`access_tokens`/`access_logs`에서
+   시작해 지금은 30개 가까운 테이블로 확장됨 — 아동·검사·수업기록 등 원본 데이터 외에도
+   `staff`/`child_staff_assignments`(선생님 계정·담당 배정, RBAC), `child_traits`/
+   `eeg_training_sessions`/`eeg_test_templates`(뇌파훈련·검사기준), `ai_generation_logs`
+   (AI 호출 이력), `audit_logs`(감사로그)가 포함됨. 전체 목록은 `supabase/schema.sql` 참고)
 3. Project Settings → API에서 **Project URL**과 **service_role** 키(anon 키 아님)를 복사
 4. `.env.local`에 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`로 채워넣기
 
+### RBAC(관리자/선생님) — 관리자 로그인과 병행
+기존 단일 관리자 로그인(`ADMIN_PASSWORD`)은 그대로 유지되고, `/admin/staff`에서 선생님
+계정(전화번호+비밀번호)을 추가로 만들 수 있습니다. 선생님은 배정된 아동의 자료만 볼 수
+있고, 뇌기능검사·홈페이지 관리 등 일부 화면은 관리자 전용입니다(`middleware.ts`의
+`ADMIN_ONLY_PREFIXES`).
+
+### AI 기능(선택) — Claude(Anthropic) 연동
+`ANTHROPIC_API_KEY`를 채우면 수업기록 초안, 뇌기능검사 AI 해석, 이미지/스캔PDF 인식이
+켜집니다(`lib/ai/`). 키가 없어도 앱은 정상 동작하며, 해당 버튼들이 "AI 기능이 아직
+설정되지 않았습니다" 안내로 대체됩니다. 모든 AI 결과는 사람이 직접 확인·클릭해야만
+저장/공개되는 값에 반영됩니다(자동 반영 없음).
+
 ### 보안 구조
-- 5개 테이블 모두 RLS(Row Level Security)가 켜져 있고 정책은 하나도 없습니다 →
+- 모든 테이블에 RLS(Row Level Security)가 켜져 있고 정책은 하나도 없습니다 →
   anon/authenticated 롤은 기본적으로 아무 것도 조회·수정할 수 없습니다.
 - 앱은 **service_role 키**로만 Supabase에 접속합니다 (`lib/data.ts`). 이 키는 RLS를
   우회하므로, 실제 접근 제어는 지금처럼 애플리케이션 코드(관리자 세션 확인, 학부모

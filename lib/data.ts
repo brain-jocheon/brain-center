@@ -18,7 +18,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes, createHash } from "crypto";
-import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession, EegTestTemplate } from "./types";
+import type { Child, Report, AccessToken, ActivityPhoto, SiteSettings, Notice, BrainTest, BrainIndicator, AttendanceRecord, MakeupRequest, ParentFeedback, AccessLogEntry, ChildVisitSummary, VisitorStats, DashboardSummary, ClassRecord, ChildComment, CommentTemplate, ParentChildComment, MonthlyReport, ParentMonthlyReport, ParentNoticeAdmin, ParentFacingNotice, Consultation, Staff, ChildTraits, EegTrainingSession, EegTestTemplate, AuditLog } from "./types";
 import type { CurrentActor } from "./auth";
 import { hashParentPassword } from "./auth";
 import type { MtprisRawInput } from "./mtpris/types";
@@ -1633,13 +1633,19 @@ export async function updateBrainTest(
 }
 
 /** 뇌기능검사 삭제 (DB 행 삭제 후 file_storage_path를 반환 — 호출부가 실제 파일도 지워야 함) */
-export async function deleteBrainTest(id: string): Promise<string | null> {
+/**
+ * [14단계에서 발견/수정] file_storage_path가 애초에 null인(파일 없이 등록된) 검사가 흔한데,
+ * 예전 코드는 반환값 string|null 하나로 "못 찾음"과 "찾아서 지웠는데 파일이 없었음"을 구분하지
+ * 못해 — 파일 없는 검사를 지우면 실제로는 삭제되면서도 항상 404("찾을 수 없음")로 잘못
+ * 응답하고, 감사로그도 안 남는 버그가 있었음. found로 명확히 구분한다.
+ */
+export async function deleteBrainTest(id: string): Promise<{ found: boolean; storagePath: string | null }> {
   const { data, error } = await db().from("brain_tests").select("file_storage_path").eq("id", id).maybeSingle();
   if (error) throw error;
-  if (!data) return null;
+  if (!data) return { found: false, storagePath: null };
   const { error: delError } = await db().from("brain_tests").delete().eq("id", id);
   if (delError) throw delError;
-  return (data as { file_storage_path: string | null }).file_storage_path;
+  return { found: true, storagePath: (data as { file_storage_path: string | null }).file_storage_path };
 }
 
 export async function createSignedBrainFileUrl(path: string, expiresIn = 600): Promise<string | null> {
@@ -2126,6 +2132,74 @@ export async function countRecentFailedStaffLogins(ip: string | null, windowMinu
     .gte("created_at", since);
   if (error) throw error;
   return (data ?? []).filter((r: { after: { ip?: string } | null }) => r.after?.ip === ip).length;
+}
+
+/* ---------------- 14단계: 감사로그(범용) + 관리자 로그인 레이트리밋 ---------------- */
+
+/** 범용 감사로그 기록 — logFailedStaffLogin과 동일하게 실패를 삼켜 실제 작업을 막지 않음 */
+export async function writeAuditLog(input: {
+  actorStaffId?: string;
+  actorLabel: string;
+  action: string;
+  targetTable: string;
+  targetId?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await db()
+      .from("audit_logs")
+      .insert({
+        id: `audit_${randomBytes(6).toString("hex")}`,
+        actor_staff_id: input.actorStaffId ?? null,
+        actor_label: input.actorLabel,
+        action: input.action,
+        target_table: input.targetTable,
+        target_id: input.targetId ?? null,
+        before: input.before ?? null,
+        after: input.after ?? null,
+      });
+  } catch {
+    // 감사로그 기록 실패가 실제 작업을 막으면 안 됨
+  }
+}
+
+/** 실패한 관리자(공용계정) 로그인 시도 기록 — logFailedStaffLogin과 동일한 형태 */
+export async function logFailedAdminLogin(ip: string | null): Promise<void> {
+  await writeAuditLog({ actorLabel: "관리자(공용계정)", action: "admin_login_failed", targetTable: "staff", after: { ip } });
+}
+
+/** countRecentFailedStaffLogins와 동일한 원리, admin_login_failed 기준 */
+export async function countRecentFailedAdminLogins(ip: string | null, windowMinutes: number): Promise<number> {
+  if (!ip) return 0;
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const { data, error } = await db()
+    .from("audit_logs")
+    .select("after")
+    .eq("action", "admin_login_failed")
+    .gte("created_at", since);
+  if (error) throw error;
+  return (data ?? []).filter((r: { after: { ip?: string } | null }) => r.after?.ip === ip).length;
+}
+
+const AUDIT_LOG_SELECT =
+  "id, actorStaffId:actor_staff_id, actorLabel:actor_label, action, targetTable:target_table, targetId:target_id, before, after, createdAt:created_at";
+
+/** 감사로그 화면용 — 최신순, 선택적으로 action/targetTable 필터 + offset 페이지네이션 */
+export async function getAuditLogs(opts?: {
+  limit?: number;
+  offset?: number;
+  action?: string;
+  targetTable?: string;
+}): Promise<AuditLog[]> {
+  const limit = opts?.limit ?? 50;
+  const offset = opts?.offset ?? 0;
+  let query = db().from("audit_logs").select(AUDIT_LOG_SELECT).order("created_at", { ascending: false });
+  if (opts?.action) query = query.eq("action", opts.action);
+  if (opts?.targetTable) query = query.eq("target_table", opts.targetTable);
+  const { data, error } = await query.range(offset, offset + limit - 1);
+  if (error) throw error;
+  return (data ?? []) as unknown as AuditLog[];
 }
 
 /* ---- 담당 아동 배정 ---- */

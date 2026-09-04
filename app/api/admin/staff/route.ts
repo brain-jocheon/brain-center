@@ -4,7 +4,7 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentActor, isFullAdmin } from "@/lib/auth";
-import { getStaffList, createStaff, getAssignedChildIds } from "@/lib/data";
+import { getStaffList, createStaff, getAssignedChildIds, getStaffById, writeAuditLog } from "@/lib/data";
 import type { Staff } from "@/lib/types";
 
 const VALID_ROLES: Staff["role"][] = ["admin", "teacher"];
@@ -42,6 +42,16 @@ export async function POST(req: Request) {
 
   try {
     const staff = await createStaff({ name, phone, password, role: role as Staff["role"] });
+    const actorLabel =
+      actor?.kind === "staff" ? `${(await getStaffById(actor.staffId))?.name ?? "관리자"}(${actor.role})` : "관리자(공용계정)";
+    await writeAuditLog({
+      actorStaffId: actor?.kind === "staff" ? actor.staffId : undefined,
+      actorLabel,
+      action: "staff_created",
+      targetTable: "staff",
+      targetId: staff.id,
+      after: { name: staff.name, phone: staff.phone, role: staff.role },
+    });
     return NextResponse.json({ ok: true, staff });
   } catch (e: unknown) {
     const code = (e as { code?: string })?.code;
