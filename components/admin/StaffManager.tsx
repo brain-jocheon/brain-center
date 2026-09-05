@@ -109,6 +109,7 @@ function StaffCreateForm({ onDone }: { onDone: () => void }) {
 
 function StaffCard({ staff, childOptions }: { staff: StaffWithAssignments; childOptions: ChildOption[] }) {
   const [assigning, setAssigning] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [toggling, setToggling] = useState(false);
   const router = useRouter();
 
@@ -144,6 +145,14 @@ function StaffCard({ staff, childOptions }: { staff: StaffWithAssignments; child
           </button>
         </div>
       </div>
+
+      {resetting ? (
+        <ResetPasswordPanel staffId={staff.id} onDone={() => setResetting(false)} />
+      ) : (
+        <button className="text-xs text-sage-600 underline underline-offset-2" onClick={() => setResetting(true)}>
+          비밀번호 재설정
+        </button>
+      )}
 
       {staff.role === "teacher" && (
         <>
@@ -221,6 +230,54 @@ function AssignPanel({
         })}
       </div>
       <button className="text-xs text-ink/40 mt-2" onClick={onDone}>닫기</button>
+    </div>
+  );
+}
+
+function ResetPasswordPanel({ staffId, onDone }: { staffId: string; onDone: () => void }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const router = useRouter();
+
+  async function handleReset() {
+    setSaving(true);
+    setMessage("");
+    const res = await fetch(`/api/admin/staff/${staffId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      router.refresh();
+      onDone();
+    } else {
+      const data = await res.json().catch(() => null);
+      setMessage(data?.message || "재설정에 실패했습니다.");
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-xl border border-sage-100 p-3">
+      <input
+        className="input mb-2"
+        type="password"
+        placeholder="새 비밀번호 (4자 이상)"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+      />
+      {message && <p className="text-xs text-apricot-600 mb-2">{message}</p>}
+      <div className="flex items-center gap-2">
+        <button
+          className="btn-primary !px-3 !py-1.5 text-xs"
+          disabled={saving || newPassword.length < 4}
+          onClick={handleReset}
+        >
+          {saving ? "재설정 중..." : "재설정"}
+        </button>
+        <button className="text-xs text-ink/40" onClick={onDone}>취소</button>
+      </div>
     </div>
   );
 }

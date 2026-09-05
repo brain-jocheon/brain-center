@@ -11,6 +11,7 @@ const ACTION_LABEL: Record<string, string> = {
   staff_login_failed: "선생님 로그인 실패",
   staff_created: "선생님 계정 생성",
   staff_active_toggled: "선생님 계정 활성화 변경",
+  staff_password_reset: "선생님 계정 비밀번호 재설정",
   staff_assignment_changed: "담당 아동 배정 변경",
   child_deleted: "아동 삭제",
   brain_test_deleted: "뇌기능검사 삭제",

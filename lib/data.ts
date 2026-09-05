@@ -2105,6 +2105,18 @@ export async function setStaffActive(id: string, active: boolean): Promise<boole
   return (data?.length ?? 0) > 0;
 }
 
+/** 관리자가 선생님 계정 비밀번호를 재설정(분실 시 유일한 복구 수단) — 생성과 동일한 해시 방식 재사용 */
+export async function setStaffPassword(id: string, newPassword: string): Promise<boolean> {
+  const passwordHash = await hashParentPassword(newPassword);
+  const { data, error } = await db()
+    .from("staff")
+    .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
 /** 실패한 선생님 로그인 시도 기록 — 스키마 변경 없이 audit_logs.after에 ip를 담아 재사용 */
 export async function logFailedStaffLogin(ip: string | null): Promise<void> {
   try {
