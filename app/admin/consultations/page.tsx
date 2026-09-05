@@ -2,13 +2,18 @@
  * 관리자: 상담 신청 확인/처리
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getConsultations } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import ConsultationList from "@/components/admin/ConsultationList";
 import type { Consultation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminConsultationsPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   // [주의] consultations 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
   let consultations: Consultation[] = [];
   try {

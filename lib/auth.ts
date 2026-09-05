@@ -53,13 +53,21 @@ export function maskName(name: string): string {
 
 const SESSION_COOKIE = "bc_admin_session";
 
-function getSecret(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    // [보안 경고] SESSION_SECRET 미설정 상태로 운영 배포 금지
-    console.warn("[보안 경고] SESSION_SECRET이 설정되지 않았습니다. .env.local을 확인하세요.");
-    return "dev-only-insecure-secret";
-  }
+/**
+ * [보안 수정] 예전엔 SESSION_SECRET이 없으면 코드에 박힌 문자열("dev-only-insecure-secret")로
+ * 조용히 대체했음 — 그 문자열이 공개 저장소에 그대로 있어서, 운영 환경변수가 실수로
+ * 빠지면 누구나 그 값으로 관리자 세션 쿠키를 위조할 수 있었음(ADMIN_PASSWORD는 이미
+ * 없으면 로그인 자체를 막는데 이쪽만 예외였음). 발급(create)은 아예 실패시키고,
+ * 검증(verify)은 예외를 던지는 대신 "무조건 무효"로 처리해 화면이 죽지 않고
+ * 로그인 화면으로 안전하게 돌아가게 한다.
+ */
+function getSecretOrNull(): string | null {
+  return process.env.SESSION_SECRET || null;
+}
+
+function requireSecret(): string {
+  const secret = getSecretOrNull();
+  if (!secret) throw new Error("SESSION_SECRET이 설정되지 않았습니다. .env.local(또는 배포 환경변수)을 확인하세요.");
   return secret;
 }
 
@@ -67,15 +75,16 @@ function getSecret(): string {
 export function createSessionToken(): string {
   const expires = Date.now() + 1000 * 60 * 60 * 8; // 8시간
   const payload = String(expires);
-  const sig = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  const sig = createHmac("sha256", requireSecret()).update(payload).digest("hex");
   return `${payload}.${sig}`;
 }
 
 export function verifySessionToken(token: string | undefined): boolean {
-  if (!token) return false;
+  const secret = getSecretOrNull();
+  if (!token || !secret) return false;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return false;
-  const expected = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  const expected = createHmac("sha256", secret).update(payload).digest("hex");
   if (!safeEqual(sig, expected)) return false;
   return Number(payload) > Date.now(); // 만료 확인
 }
@@ -101,15 +110,16 @@ export type StaffRole = "admin" | "teacher";
 export function createStaffSessionToken(staffId: string, role: StaffRole): string {
   const expires = Date.now() + 1000 * 60 * 60 * 8; // 8시간 — 관리자 세션과 동일
   const payload = `${expires}:${staffId}:${role}`;
-  const sig = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  const sig = createHmac("sha256", requireSecret()).update(payload).digest("hex");
   return `${payload}.${sig}`;
 }
 
 export function verifyStaffSessionToken(token: string | undefined): { staffId: string; role: StaffRole } | null {
-  if (!token) return null;
+  const secret = getSecretOrNull();
+  if (!token || !secret) return null;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
-  const expected = createHmac("sha256", getSecret()).update(payload).digest("hex");
+  const expected = createHmac("sha256", secret).update(payload).digest("hex");
   if (!safeEqual(sig, expected)) return null;
   const [expiresStr, staffId, role] = payload.split(":");
   if (!expiresStr || !staffId || !role) return null;

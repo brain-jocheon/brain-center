@@ -4,12 +4,17 @@
  * AI 검사해석/검사변화비교 화면 모두 이 설정을 참고한다.
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getEegTestTemplates, getBrainTestTypes } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import TestTemplateManager from "@/components/admin/TestTemplateManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function TestTemplatesPage() {
+  // [보안] 주석대로 관리자 전용인데 여태 화면/미들웨어 어디에도 확인이 없었음 — 추가
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const [templates, testTypeSuggestions] = await Promise.all([getEegTestTemplates(), getBrainTestTypes()]);
 
   return (

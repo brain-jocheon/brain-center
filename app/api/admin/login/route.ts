@@ -42,10 +42,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "비밀번호 오류" }, { status: 401 });
   }
 
+  // [보안] createSessionToken()이 SESSION_SECRET 미설정 시 예외를 던지므로, 감사로그보다 먼저
+  // 호출해 실패 시 "로그인 성공"으로 잘못 기록되지 않게 한다.
+  const sessionToken = createSessionToken();
   await writeAuditLog({ actorLabel: "관리자(공용계정)", action: "admin_login_success", targetTable: "staff" });
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(ADMIN_SESSION_COOKIE, createSessionToken(), {
+  res.cookies.set(ADMIN_SESSION_COOKIE, sessionToken, {
     httpOnly: true, // [보안] 자바스크립트에서 쿠키 접근 불가
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production", // [보안] 운영에서는 HTTPS에서만 전송

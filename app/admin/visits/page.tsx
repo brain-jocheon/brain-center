@@ -6,7 +6,9 @@
  * 원본 기록에서만 노출합니다(비밀번호 오답 등은 아이를 특정할 수 없음).
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getChildren, getRecentAccessLogs, summarizeVisitsByChild, getVisitorStats } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import type { AccessLogEntry, VisitorStats } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,9 @@ function formatDateTime(iso: string): string {
 }
 
 export default async function AdminVisitsPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const children = await getChildren();
   const activeChildren = children.filter((c) => c.status !== "ended");
 

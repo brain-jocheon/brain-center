@@ -2,13 +2,18 @@
  * 관리자: 학부모 문의/건의사항 확인
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getParentFeedback, getChildren } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import FeedbackList from "@/components/admin/FeedbackList";
 import type { ParentFeedback } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminFeedbackPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const children = await getChildren();
   const childNames: Record<string, { name: string; grade: string }> = Object.fromEntries(
     children.map((c) => [c.id, { name: c.name, grade: c.grade }])

@@ -44,6 +44,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/feedback",
   "/admin/makeup-requests",
   "/admin/audit-logs",
+  "/admin/test-templates",
 ];
 
 export async function middleware(req: NextRequest) {
@@ -53,7 +54,15 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/admin/login")) return NextResponse.next();
 
   if (pathname.startsWith("/admin")) {
-    const secret = process.env.SESSION_SECRET || "dev-only-insecure-secret";
+    const secret = process.env.SESSION_SECRET;
+    // [보안 수정] 예전엔 SESSION_SECRET이 없으면 코드에 박힌 문자열로 대체해서, 그 값을
+    // 알면 누구나 세션을 위조할 수 있었음 — 이제 없으면 모든 세션을 무조건 무효 처리
+    // (로그인 화면으로 안전하게 리다이렉트, 크래시 아님)하고 그 값으로는 절대 검증하지 않는다.
+    if (!secret) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/admin/login";
+      return NextResponse.redirect(url);
+    }
     const adminResult = await verify(req.cookies.get("bc_admin_session")?.value, secret);
     if (adminResult) return NextResponse.next(); // 기존 관리자 세션 — 동작 완전히 그대로
 

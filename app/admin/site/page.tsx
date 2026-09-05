@@ -3,7 +3,9 @@
  * 특정 아이와 무관하게, 로그인 없이 보이는 공개 홈페이지(app/page.tsx)의 내용을 편집합니다.
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getSiteSettings, getNotices, DEFAULT_ABOUT_TEXT } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import type { SiteSettings, Notice } from "@/lib/types";
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import NoticeManager from "@/components/admin/NoticeManager";
@@ -11,6 +13,9 @@ import NoticeManager from "@/components/admin/NoticeManager";
 export const dynamic = "force-dynamic";
 
 export default async function SiteAdminPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   let settings: SiteSettings = { aboutText: DEFAULT_ABOUT_TEXT, updatedAt: "" };
   let notices: Notice[] = [];
   try {

@@ -5,13 +5,18 @@
  * 인증)한 모든 학부모의 화면에 노출됩니다 (특정 아이 태그 여부와 무관).
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getBlogPhotos, getChildren, getActivityNames, createSignedPhotoUrl } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import PhotoUploadForm from "@/components/admin/PhotoUploadForm";
 import PhotoGallery, { type GalleryPhoto } from "@/components/admin/PhotoGallery";
 
 export const dynamic = "force-dynamic";
 
 export default async function BlogAdminPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const [photos, allChildren, activityNames] = await Promise.all([
     getBlogPhotos(),
     getChildren(),

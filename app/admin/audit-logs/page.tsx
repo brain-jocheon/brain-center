@@ -4,7 +4,9 @@
  * "실제로 의미있는" 보안·계정 이벤트만 기록한다(모든 API를 계측하지 않음).
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getAuditLogs } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import AuditLogList from "@/components/admin/AuditLogList";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +18,9 @@ export default async function AuditLogsPage({
 }: {
   searchParams: { action?: string; targetTable?: string; offset?: string };
 }) {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const offset = Math.max(0, Number(searchParams.offset) || 0);
   const action = searchParams.action || undefined;
   const targetTable = searchParams.targetTable || undefined;

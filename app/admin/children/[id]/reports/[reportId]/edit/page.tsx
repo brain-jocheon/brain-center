@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getChild, getReport } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import ReportEditForm from "@/components/ReportEditForm";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,9 @@ export default async function EditReportPage({
 }: {
   params: { id: string; reportId: string };
 }) {
+  // [보안] 서술형 리포트 수정은 관리자 전용(PUT /api/admin/reports도 동일) — URL 직접 접근 차단
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const child = await getChild(params.id);
   const report = await getReport(params.reportId);
   if (!child || !report || report.childId !== child.id) notFound();

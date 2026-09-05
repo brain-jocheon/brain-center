@@ -11,6 +11,7 @@
  */
 import { notFound } from "next/navigation";
 import { getChild, getReport } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import ScoreBars from "@/components/ScoreBars";
 import PrintToolbar from "@/components/PrintToolbar";
 
@@ -21,6 +22,9 @@ export default async function PrintReportPage({
 }: {
   params: { id: string; reportId: string };
 }) {
+  // [보안] 위 주석대로 관리자 전용 화면 — 담당 여부와 무관하게 URL 직접 접근을 막음(IDOR 방지)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const child = await getChild(params.id);
   const report = await getReport(params.reportId);
   if (!child || !report || report.childId !== child.id) notFound();

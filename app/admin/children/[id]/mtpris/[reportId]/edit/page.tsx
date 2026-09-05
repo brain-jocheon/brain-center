@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getChild, getMtprisReport } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import MtprisEditForm from "@/components/mtpris/MtprisEditForm";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,9 @@ export default async function EditMtprisPage({
 }: {
   params: { id: string; reportId: string };
 }) {
+  // [보안] MT-PRIS 수정은 관리자 전용(PUT /api/admin/mtpris-reports도 동일) — URL 직접 접근 차단
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const child = await getChild(params.id);
   const report = await getMtprisReport(params.reportId);
   if (!child || !report || report.childId !== child.id) notFound();

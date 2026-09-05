@@ -4,13 +4,18 @@
  * 작성한 공지는 대상 조건에 맞는 아이의 학부모(토큰+비밀번호 로그인)에게만 보입니다.
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getParentNoticesAdmin, getChildren } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import type { ParentNoticeAdmin } from "@/lib/types";
 import ParentNoticeManager from "@/components/admin/ParentNoticeManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function ParentNoticesPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   // [주의] parent_notices 테이블 마이그레이션 전이어도 이 페이지가 깨지지 않게 별도 처리
   let notices: ParentNoticeAdmin[] = [];
   try {

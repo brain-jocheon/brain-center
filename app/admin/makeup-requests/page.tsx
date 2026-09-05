@@ -2,13 +2,18 @@
  * 관리자: 보강 희망일 요청 확인/승인/거절
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getMakeupRequests, getChildren } from "@/lib/data";
+import { getCurrentActor, isFullAdmin } from "@/lib/auth";
 import MakeupRequestList from "@/components/admin/MakeupRequestList";
 import type { MakeupRequest } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function MakeupRequestsPage() {
+  // [보안] middleware만 믿지 않고 화면 자체에서도 관리자 여부를 확인(이중 방어)
+  if (!isFullAdmin(getCurrentActor())) notFound();
+
   const children = await getChildren();
   const childNames: Record<string, { name: string; grade: string }> = Object.fromEntries(
     children.map((c) => [c.id, { name: c.name, grade: c.grade }])

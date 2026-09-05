@@ -38,6 +38,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "전화번호 또는 비밀번호가 맞지 않습니다." }, { status: 401 });
   }
 
+  // [보안] createStaffSessionToken()이 SESSION_SECRET 미설정 시 예외를 던지므로, 감사로그보다
+  // 먼저 호출해 실패 시 "로그인 성공"으로 잘못 기록되지 않게 한다.
+  const sessionToken = createStaffSessionToken(staff.id, staff.role);
   await writeAuditLog({
     actorStaffId: staff.id,
     actorLabel: `${staff.name}(${staff.role})`,
@@ -47,7 +50,7 @@ export async function POST(req: Request) {
   });
 
   const res = NextResponse.json({ ok: true, role: staff.role });
-  res.cookies.set(STAFF_SESSION_COOKIE, createStaffSessionToken(staff.id, staff.role), {
+  res.cookies.set(STAFF_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
