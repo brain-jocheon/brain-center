@@ -682,3 +682,36 @@ alter table ai_generation_logs add constraint ai_generation_logs_feature_check
 -- join할 수 없으므로, 사람이 읽는 행위자 표시용 컬럼을 별도로 둔다.
 -- =====================================================================
 alter table audit_logs add column if not exists actor_label text;
+
+-- =====================================================================
+-- 15단계: 아동별 수업기록 시스템 재정비 (재정비 2단계, 1차)
+-- ---------------------------------------------------------------------
+-- 전부 add column if not exists — 기존 comment/is_public_to_parent/strengths_note/
+-- difficulties_note/teacher_memo/ai_draft_*/lesson_goal/participation의 의미와
+-- 기존 데이터는 전혀 바꾸지 않는다. service_type/class_day는 이 단계와 무관해서
+-- 손대지 않는다.
+-- =====================================================================
+
+-- ---- child_comments 확장: 선생님이 1분 안에 남기는 단계형 관찰 지표(1~5) ----
+alter table child_comments add column if not exists participation_level smallint check (participation_level is null or participation_level between 1 and 5);
+alter table child_comments add column if not exists concentration_level smallint check (concentration_level is null or concentration_level between 1 and 5);
+alter table child_comments add column if not exists understanding_level smallint check (understanding_level is null or understanding_level between 1 and 5);
+alter table child_comments add column if not exists emotional_state_level smallint check (emotional_state_level is null or emotional_state_level between 1 and 5);
+alter table child_comments add column if not exists interaction_level smallint check (interaction_level is null or interaction_level between 1 and 5);
+
+-- ---- child_comments 확장: 내부 전용 신규 메모(기존 strengths_note/difficulties_note/teacher_memo는 그대로 재사용) ----
+alter table child_comments add column if not exists special_note text;
+alter table child_comments add column if not exists next_session_goal text;
+
+-- ---- child_comments 확장: 학부모 공개용 "별도" 영역 — 기존 comment/is_public_to_parent와는
+-- 완전히 별개의 저장공간. 관리자가 이 내용을 승인해야만(parent_approved_at) 학부모에게 노출된다. ----
+alter table child_comments add column if not exists parent_activity_summary text;
+alter table child_comments add column if not exists parent_positive_moment text;
+alter table child_comments add column if not exists parent_observed_change text;
+alter table child_comments add column if not exists parent_next_goal text;
+alter table child_comments add column if not exists parent_home_tip text;
+alter table child_comments add column if not exists parent_approved_at timestamptz;
+alter table child_comments add column if not exists parent_approved_by text;
+
+-- ---- class_records 확장: "담당 선생님"을 실제 계정으로 남김(기존 counselor 자유텍스트는 그대로 유지, 병행) ----
+alter table class_records add column if not exists created_by_staff_id text references staff(id) on delete set null;

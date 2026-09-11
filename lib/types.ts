@@ -305,6 +305,8 @@ export interface ClassRecord {
   /** 6단계 추가 — 기존 lib/data.ts는 아직 안 다룸(10단계에서 반영) */
   lessonGoal?: string;
   participation?: string;
+  /** [15단계] 이 기록을 작성한 선생님 계정 — legacy_admin이 작성했으면 undefined. 기존 counselor(자유텍스트)는 그대로 유지, 병행 */
+  createdByStaffId?: string;
 }
 
 /** 아이별 코멘트 오버라이드(관리자 전체 뷰) — comment가 비어있으면 화면에서
@@ -333,6 +335,24 @@ export interface ChildComment {
   aiGeneratedAt?: string;
   aiModel?: string;
   finalSource?: "manual" | "ai_edited";
+  /** [15단계] 선생님이 수업 직후 1분 안에 남기는 단계형 관찰(1~5, 값 없으면 미측정) */
+  participationLevel?: number;
+  concentrationLevel?: number;
+  understandingLevel?: number;
+  emotionalStateLevel?: number;
+  interactionLevel?: number;
+  /** [15단계] 내부 전용 신규 메모 — strengthsNote/difficultiesNote/teacherMemo(잘한점/어려운점/자유메모)와 병행 */
+  specialNote?: string;
+  nextSessionGoal?: string;
+  /** [15단계] 학부모 공개용 — comment/isPublicToParent와 완전히 별개의 저장공간.
+   * parentApprovedAt이 있어야만(관리자 승인) 실제로 is_public_to_parent가 true로 바뀜. */
+  parentActivitySummary?: string;
+  parentPositiveMoment?: string;
+  parentObservedChange?: string;
+  parentNextGoal?: string;
+  parentHomeTip?: string;
+  parentApprovedAt?: string;
+  parentApprovedBy?: string;
 }
 
 /** 학부모 화면에 내려가는 코멘트 — 공개로 설정된 것만, 관리자 전용 필드 없음 */

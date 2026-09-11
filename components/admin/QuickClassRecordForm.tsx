@@ -11,6 +11,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { CommentTemplate } from "@/lib/types";
+import RatingStepper from "./RatingStepper";
 
 const PHOTO_BUCKET = "activity-photos";
 const ACTIVITY_TYPE_LABEL: Record<string, string> = {
@@ -20,13 +21,26 @@ const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"];
 
 type ChildOption = { id: string; name: string; grade: string };
 type AiDraft = { detail: string; parent: string; guidance: string; model: string };
-type PerChildState = {
+type Ratings = {
+  participationLevel: number | null;
+  concentrationLevel: number | null;
+  understandingLevel: number | null;
+  emotionalStateLevel: number | null;
+  interactionLevel: number | null;
+};
+type PerChildState = Ratings & {
   override: boolean;
   comment: string;
-  isPublicToParent: boolean;
   teacherMemo: string;
   strengthsNote: string;
   difficultiesNote: string;
+  specialNote: string;
+  nextSessionGoal: string;
+  parentActivitySummary: string;
+  parentPositiveMoment: string;
+  parentObservedChange: string;
+  parentNextGoal: string;
+  parentHomeTip: string;
   aiLoading: boolean;
   aiDraft: AiDraft | null;
   aiMessage: string;
@@ -88,10 +102,21 @@ export default function QuickClassRecordForm({
       perChild[id] ?? {
         override: false,
         comment: "",
-        isPublicToParent: false,
         teacherMemo: "",
         strengthsNote: "",
         difficultiesNote: "",
+        specialNote: "",
+        nextSessionGoal: "",
+        parentActivitySummary: "",
+        parentPositiveMoment: "",
+        parentObservedChange: "",
+        parentNextGoal: "",
+        parentHomeTip: "",
+        participationLevel: null,
+        concentrationLevel: null,
+        understandingLevel: null,
+        emotionalStateLevel: null,
+        interactionLevel: null,
         aiLoading: false,
         aiDraft: null,
         aiMessage: "",
@@ -200,10 +225,24 @@ export default function QuickClassRecordForm({
       const state = getPerChild(id);
       childComments[id] = {
         comment: state.override ? state.comment.trim() || undefined : undefined,
-        isPublicToParent: state.isPublicToParent,
+        // [15단계/보안] 여기서 무엇을 보내든 서버가 생성 시점엔 항상 false로 저장함(자동공개 금지) —
+        // 학부모 공개는 "수업 코멘트" 탭에서 관리자가 나중에 승인해야 함.
+        isPublicToParent: false,
         strengthsNote: state.strengthsNote.trim() || undefined,
         difficultiesNote: state.difficultiesNote.trim() || undefined,
         teacherMemo: state.teacherMemo.trim() || undefined,
+        specialNote: state.specialNote.trim() || undefined,
+        nextSessionGoal: state.nextSessionGoal.trim() || undefined,
+        parentActivitySummary: state.parentActivitySummary.trim() || undefined,
+        parentPositiveMoment: state.parentPositiveMoment.trim() || undefined,
+        parentObservedChange: state.parentObservedChange.trim() || undefined,
+        parentNextGoal: state.parentNextGoal.trim() || undefined,
+        parentHomeTip: state.parentHomeTip.trim() || undefined,
+        participationLevel: state.participationLevel ?? undefined,
+        concentrationLevel: state.concentrationLevel ?? undefined,
+        understandingLevel: state.understandingLevel ?? undefined,
+        emotionalStateLevel: state.emotionalStateLevel ?? undefined,
+        interactionLevel: state.interactionLevel ?? undefined,
         ...(state.aiDraft
           ? {
               aiDraftDetail: state.aiDraft.detail,
@@ -428,7 +467,8 @@ export default function QuickClassRecordForm({
 
       {selectedChildren.length > 0 && (
         <div className="card">
-          <p className="section-label mb-3">아이별 코멘트 · 공개 여부</p>
+          <p className="section-label mb-3">아이별 관찰 기록</p>
+          <p className="text-xs text-ink/40 mb-3">학부모 공개는 저장 후 "수업 코멘트" 탭에서 관리자가 승인해야 반영됩니다.</p>
           <div className="space-y-3">
             {selectedChildren.map((c) => {
               const state = getPerChild(c.id);
@@ -457,17 +497,17 @@ export default function QuickClassRecordForm({
                   {!state.override && sharedComment.trim() && (
                     <p className="text-xs text-ink/40 mb-2">전체 코멘트와 동일: “{sharedComment.trim()}”</p>
                   )}
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={state.isPublicToParent}
-                      onChange={(e) => updatePerChild(c.id, { isPublicToParent: e.target.checked })}
-                    />
-                    이 아이 학부모에게 공개
-                  </label>
+
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-2">
+                    <RatingStepper label="참여도" value={state.participationLevel ?? undefined} onChange={(v) => updatePerChild(c.id, { participationLevel: v })} />
+                    <RatingStepper label="집중도" value={state.concentrationLevel ?? undefined} onChange={(v) => updatePerChild(c.id, { concentrationLevel: v })} />
+                    <RatingStepper label="이해도" value={state.understandingLevel ?? undefined} onChange={(v) => updatePerChild(c.id, { understandingLevel: v })} />
+                    <RatingStepper label="정서상태" value={state.emotionalStateLevel ?? undefined} onChange={(v) => updatePerChild(c.id, { emotionalStateLevel: v })} />
+                    <RatingStepper label="상호작용" value={state.interactionLevel ?? undefined} onChange={(v) => updatePerChild(c.id, { interactionLevel: v })} />
+                  </div>
 
                   <div className="mt-3 pt-3 border-t border-sage-100">
-                    <p className="text-xs font-medium text-ink/60 mb-1.5">AI 초안 도우미 (선택)</p>
+                    <p className="text-xs font-medium text-ink/60 mb-1.5">짧은 메모 (선택 — AI 초안에도 쓰입니다)</p>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <input
                         className="input !py-1.5 text-xs"
@@ -481,13 +521,39 @@ export default function QuickClassRecordForm({
                         value={state.difficultiesNote}
                         onChange={(e) => updatePerChild(c.id, { difficultiesNote: e.target.value })}
                       />
+                      <input
+                        className="input !py-1.5 text-xs"
+                        placeholder="특이사항"
+                        value={state.specialNote}
+                        onChange={(e) => updatePerChild(c.id, { specialNote: e.target.value })}
+                      />
+                      <input
+                        className="input !py-1.5 text-xs"
+                        placeholder="다음 시간 목표"
+                        value={state.nextSessionGoal}
+                        onChange={(e) => updatePerChild(c.id, { nextSessionGoal: e.target.value })}
+                      />
                     </div>
                     <textarea
                       className="input !py-1.5 text-xs min-h-12 mb-2"
-                      placeholder="짧은 메모 (예: 오늘 처음 보는 도형도 스스로 맞췄음)"
+                      placeholder="자유메모 (예: 오늘 처음 보는 도형도 스스로 맞췄음)"
                       value={state.teacherMemo}
                       onChange={(e) => updatePerChild(c.id, { teacherMemo: e.target.value })}
                     />
+
+                    <details className="rounded-lg border border-sage-100 p-2.5 mb-2">
+                      <summary className="text-xs font-medium text-sage-700 cursor-pointer select-none">
+                        학부모 공개용 초안 (선택 — 나중에 작성해도 됩니다. 관리자 승인 전엔 학부모에게 안 보입니다)
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        <input className="input !py-1.5 text-xs" placeholder="오늘의 활동" value={state.parentActivitySummary} onChange={(e) => updatePerChild(c.id, { parentActivitySummary: e.target.value })} />
+                        <input className="input !py-1.5 text-xs" placeholder="아이의 긍정적인 반응" value={state.parentPositiveMoment} onChange={(e) => updatePerChild(c.id, { parentPositiveMoment: e.target.value })} />
+                        <input className="input !py-1.5 text-xs" placeholder="관찰된 변화" value={state.parentObservedChange} onChange={(e) => updatePerChild(c.id, { parentObservedChange: e.target.value })} />
+                        <input className="input !py-1.5 text-xs" placeholder="다음 목표" value={state.parentNextGoal} onChange={(e) => updatePerChild(c.id, { parentNextGoal: e.target.value })} />
+                        <input className="input !py-1.5 text-xs" placeholder="가정에서 참고할 내용" value={state.parentHomeTip} onChange={(e) => updatePerChild(c.id, { parentHomeTip: e.target.value })} />
+                      </div>
+                    </details>
+
                     <button
                       type="button"
                       className="btn-ghost !px-3 !py-1.5 text-xs"

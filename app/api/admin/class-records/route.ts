@@ -59,6 +59,7 @@ export async function POST(req: Request) {
     counselor: body.counselor?.trim() || undefined,
     lessonGoal: body.lessonGoal?.trim() || undefined,
     participation: body.participation?.trim() || undefined,
+    createdByStaffId: actor.kind === "staff" ? actor.staffId : undefined,
     childIds,
     childComments: body.childComments ?? {},
   });

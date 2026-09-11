@@ -700,7 +700,7 @@ export async function deletePhotoFile(path: string): Promise<void> {
 /* ---------------- 수업기록 / 아이별 코멘트 / 코멘트 템플릿 ---------------- */
 
 const CLASS_RECORD_SELECT =
-  "id, classDate:class_date, activityName:activity_name, activityType:activity_type, comment, counselor, lessonGoal:lesson_goal, participation, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
+  "id, classDate:class_date, activityName:activity_name, activityType:activity_type, comment, counselor, lessonGoal:lesson_goal, participation, createdByStaffId:created_by_staff_id, createdAt:created_at, updatedAt:updated_at, deletedAt:deleted_at";
 
 async function attachChildIds(records: Omit<ClassRecord, "childIds">[]): Promise<ClassRecord[]> {
   if (records.length === 0) return [];
@@ -730,6 +730,22 @@ export interface ChildCommentExtras {
   aiGeneratedAt?: string;
   aiModel?: string;
   finalSource?: "manual" | "ai_edited";
+  /** [15단계] 선생님이 수업 직후 1분 안에 남기는 단계형 관찰(1~5) — 내부 전용 */
+  participationLevel?: number;
+  concentrationLevel?: number;
+  understandingLevel?: number;
+  emotionalStateLevel?: number;
+  interactionLevel?: number;
+  specialNote?: string;
+  nextSessionGoal?: string;
+  /** [15단계] 학부모 공개용 "초안" — comment/isPublicToParent와 완전히 별개의 저장공간.
+   * 여기 값을 채워도 자동 공개되지 않는다(updateChildComment의 parentPublishAction으로
+   * 관리자만 승인해야 실제로 노출됨). */
+  parentActivitySummary?: string;
+  parentPositiveMoment?: string;
+  parentObservedChange?: string;
+  parentNextGoal?: string;
+  parentHomeTip?: string;
 }
 
 export interface ClassRecordInput {
@@ -742,8 +758,12 @@ export interface ClassRecordInput {
   /** 10단계 — 수업목표/참여도(수업 단위 공용, 아이별 아님) */
   lessonGoal?: string;
   participation?: string;
+  /** [15단계] 이 기록을 작성한 선생님 계정(actor가 staff일 때만) — 기존 counselor 자유텍스트는 그대로 유지, 병행 */
+  createdByStaffId?: string;
   childIds: string[];
-  /** 아이마다 하나씩 채워서 넘김(폼에서 모든 참여 아이에 대해 공개여부를 명시적으로 정하기 때문) */
+  /** 아이마다 하나씩 채워서 넘김(폼에서 모든 참여 아이에 대해 공개여부를 명시적으로 정하기 때문).
+   * [15단계/보안] isPublicToParent는 여기서 받아도 생성 시점에는 항상 false로 저장된다 —
+   * 학부모 공개는 반드시 관리자가 나중에 명시적으로 승인해야 한다(updateChildComment 참고). */
   childComments: Record<string, { comment?: string; isPublicToParent: boolean } & ChildCommentExtras>;
 }
 
@@ -769,6 +789,7 @@ export async function createClassRecord(input: ClassRecordInput): Promise<ClassR
     counselor: input.counselor?.trim() || null,
     lesson_goal: input.lessonGoal?.trim() || null,
     participation: input.participation?.trim() || null,
+    created_by_staff_id: input.createdByStaffId || null,
     created_at: now,
     updated_at: now,
   };
@@ -788,7 +809,9 @@ export async function createClassRecord(input: ClassRecordInput): Promise<ClassR
       class_record_id: id,
       child_id: childId,
       comment: entry.comment?.trim() || null,
-      is_public_to_parent: entry.isPublicToParent,
+      // [15단계/보안] entry.isPublicToParent는 무시하고 항상 false로 생성 — 학부모 공개는
+      // 반드시 관리자가 나중에 명시적으로 승인해야 한다(자동공개 금지, updateChildComment 참고).
+      is_public_to_parent: false,
       strengths_note: entry.strengthsNote?.trim() || null,
       difficulties_note: entry.difficultiesNote?.trim() || null,
       teacher_memo: entry.teacherMemo?.trim() || null,
@@ -798,6 +821,18 @@ export async function createClassRecord(input: ClassRecordInput): Promise<ClassR
       ai_generated_at: entry.aiGeneratedAt || null,
       ai_model: entry.aiModel || null,
       final_source: entry.finalSource || null,
+      participation_level: entry.participationLevel ?? null,
+      concentration_level: entry.concentrationLevel ?? null,
+      understanding_level: entry.understandingLevel ?? null,
+      emotional_state_level: entry.emotionalStateLevel ?? null,
+      interaction_level: entry.interactionLevel ?? null,
+      special_note: entry.specialNote?.trim() || null,
+      next_session_goal: entry.nextSessionGoal?.trim() || null,
+      parent_activity_summary: entry.parentActivitySummary?.trim() || null,
+      parent_positive_moment: entry.parentPositiveMoment?.trim() || null,
+      parent_observed_change: entry.parentObservedChange?.trim() || null,
+      parent_next_goal: entry.parentNextGoal?.trim() || null,
+      parent_home_tip: entry.parentHomeTip?.trim() || null,
       created_at: now,
       updated_at: now,
     };
@@ -842,23 +877,72 @@ export async function getChildCommentOwner(id: string): Promise<string | null> {
   return (data as { childId: string } | null)?.childId ?? null;
 }
 
+type ChildCommentEditableFields = Pick<
+  ChildComment,
+  | "comment"
+  | "participationLevel" | "concentrationLevel" | "understandingLevel" | "emotionalStateLevel" | "interactionLevel"
+  | "strengthsNote" | "difficultiesNote" | "teacherMemo" | "specialNote" | "nextSessionGoal"
+  | "parentActivitySummary" | "parentPositiveMoment" | "parentObservedChange" | "parentNextGoal" | "parentHomeTip"
+>;
+
+/** [15단계/보안] 학부모 공개는 원시 boolean을 직접 받지 않고 이 액션을 통해서만 바뀐다 —
+ * "approve"는 isFullAdmin만 호출할 수 있게 API 라우트에서 막는다(여기선 데이터만 다룸). */
 export async function updateChildComment(
   id: string,
-  patch: Partial<Pick<ChildComment, "comment" | "isPublicToParent">>
+  patch: Partial<ChildCommentEditableFields> & { parentPublishAction?: "approve" | "revoke"; approverLabel?: string }
 ): Promise<boolean> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.comment !== undefined) row.comment = patch.comment?.trim() || null;
-  if (patch.isPublicToParent !== undefined) row.is_public_to_parent = patch.isPublicToParent;
+  if (patch.participationLevel !== undefined) row.participation_level = patch.participationLevel;
+  if (patch.concentrationLevel !== undefined) row.concentration_level = patch.concentrationLevel;
+  if (patch.understandingLevel !== undefined) row.understanding_level = patch.understandingLevel;
+  if (patch.emotionalStateLevel !== undefined) row.emotional_state_level = patch.emotionalStateLevel;
+  if (patch.interactionLevel !== undefined) row.interaction_level = patch.interactionLevel;
+  if (patch.strengthsNote !== undefined) row.strengths_note = patch.strengthsNote?.trim() || null;
+  if (patch.difficultiesNote !== undefined) row.difficulties_note = patch.difficultiesNote?.trim() || null;
+  if (patch.teacherMemo !== undefined) row.teacher_memo = patch.teacherMemo?.trim() || null;
+  if (patch.specialNote !== undefined) row.special_note = patch.specialNote?.trim() || null;
+  if (patch.nextSessionGoal !== undefined) row.next_session_goal = patch.nextSessionGoal?.trim() || null;
+  if (patch.parentActivitySummary !== undefined) row.parent_activity_summary = patch.parentActivitySummary?.trim() || null;
+  if (patch.parentPositiveMoment !== undefined) row.parent_positive_moment = patch.parentPositiveMoment?.trim() || null;
+  if (patch.parentObservedChange !== undefined) row.parent_observed_change = patch.parentObservedChange?.trim() || null;
+  if (patch.parentNextGoal !== undefined) row.parent_next_goal = patch.parentNextGoal?.trim() || null;
+  if (patch.parentHomeTip !== undefined) row.parent_home_tip = patch.parentHomeTip?.trim() || null;
+
+  if (patch.parentPublishAction === "approve") {
+    row.is_public_to_parent = true;
+    row.parent_approved_at = new Date().toISOString();
+    row.parent_approved_by = patch.approverLabel ?? "관리자";
+  } else if (patch.parentPublishAction === "revoke") {
+    // [주의] parent_approved_at/by는 "마지막으로 언제 승인했었는지" 이력으로 남기고 지우지 않음
+    row.is_public_to_parent = false;
+  }
+
   const { data, error } = await db().from("child_comments").update(row).eq("id", id).select("id");
   if (error) throw error;
   return (data?.length ?? 0) > 0;
 }
 
+const CHILD_COMMENT_ADMIN_SELECT =
+  "id, classRecordId:class_record_id, comment, isPublicToParent:is_public_to_parent, " +
+  "participationLevel:participation_level, concentrationLevel:concentration_level, understandingLevel:understanding_level, " +
+  "emotionalStateLevel:emotional_state_level, interactionLevel:interaction_level, " +
+  "strengthsNote:strengths_note, difficultiesNote:difficulties_note, teacherMemo:teacher_memo, " +
+  "specialNote:special_note, nextSessionGoal:next_session_goal, " +
+  "parentActivitySummary:parent_activity_summary, parentPositiveMoment:parent_positive_moment, " +
+  "parentObservedChange:parent_observed_change, parentNextGoal:parent_next_goal, parentHomeTip:parent_home_tip, " +
+  "parentApprovedAt:parent_approved_at, parentApprovedBy:parent_approved_by";
+
+export type ChildCommentAdminRow = Omit<ChildComment, "childId" | "classRecordId" | "createdAt" | "updatedAt" | "deletedAt"> & {
+  classRecordId: string;
+};
+
 /** 관리자 전용 — 아이 상세 "수업 코멘트" 탭용. 이 아이가 참여한 수업기록을 최신순으로,
- * 그 아이의 코멘트(있으면 오버라이드, 없으면 공용 comment를 화면에서 그대로 보여주면 됨)와 함께 반환 */
+ * 그 아이의 코멘트(있으면 오버라이드, 없으면 공용 comment를 화면에서 그대로 보여주면 됨)와
+ * [15단계] 단계형 관찰·내부메모·학부모 공개초안·승인상태까지 전부 함께 반환(조회+수정+승인 화면용) */
 export async function getChildCommentsByChild(
   childId: string
-): Promise<{ classRecord: ClassRecord; childCommentId?: string; comment?: string; isPublicToParent: boolean }[]> {
+): Promise<{ classRecord: ClassRecord; childComment?: ChildCommentAdminRow }[]> {
   const { data: links, error: linkError } = await db()
     .from("class_record_children")
     .select("classRecordId:class_record_id")
@@ -878,36 +962,61 @@ export async function getChildCommentsByChild(
 
   const { data: comments, error: commentError } = await db()
     .from("child_comments")
-    .select("id, classRecordId:class_record_id, comment, isPublicToParent:is_public_to_parent")
+    .select(CHILD_COMMENT_ADMIN_SELECT)
     .eq("child_id", childId)
     .in("class_record_id", recordIds);
   if (commentError) throw commentError;
   const commentMap = new Map(
-    ((comments ?? []) as { id: string; classRecordId: string; comment: string | null; isPublicToParent: boolean }[]).map(
-      (c) => [c.classRecordId, c]
-    )
+    ((comments ?? []) as unknown as ChildCommentAdminRow[]).map((c) => [c.classRecordId, c])
   );
 
-  return withChildIds.map((r) => {
-    const c = commentMap.get(r.id);
-    return {
-      classRecord: r,
-      childCommentId: c?.id,
-      comment: c?.comment ?? undefined,
-      isPublicToParent: c?.isPublicToParent ?? false,
-    };
-  });
+  return withChildIds.map((r) => ({ classRecord: r, childComment: commentMap.get(r.id) }));
 }
 
-/** 학부모 화면용 — 이 아이에게 공개로 설정된 코멘트만, 관리자 전용 필드 없이 반환 */
+/** [15단계] 학부모 공개초안 5개를 사람이 읽기 좋은 문단으로 합침 — 하나도 없으면 undefined
+ * (그러면 호출부가 기존 comment/class_records.comment로 폴백, 옛날 데이터 호환) */
+function composeParentDraft(row: {
+  parentActivitySummary: string | null;
+  parentPositiveMoment: string | null;
+  parentObservedChange: string | null;
+  parentNextGoal: string | null;
+  parentHomeTip: string | null;
+}): string | undefined {
+  const sections: [string, string | null][] = [
+    ["오늘의 활동", row.parentActivitySummary],
+    ["아이의 긍정적인 반응", row.parentPositiveMoment],
+    ["관찰된 변화", row.parentObservedChange],
+    ["다음 목표", row.parentNextGoal],
+    ["가정에서 참고할 내용", row.parentHomeTip],
+  ];
+  const filled = sections.filter(([, v]) => v && v.trim());
+  if (filled.length === 0) return undefined;
+  return filled.map(([label, v]) => `${label}: ${v!.trim()}`).join("\n\n");
+}
+
+/** 학부모 화면용 — 이 아이에게 공개로 설정된(관리자 승인된) 코멘트만, 관리자 전용 필드 없이 반환.
+ * [15단계] 학부모 공개초안(parent_*) 5개가 채워져 있으면 그걸 조합해서 보여주고, 없으면(옛날 데이터)
+ * 기존 comment/class_records.comment로 그대로 폴백 — is_public_to_parent가 유일한 노출 조건인 건 그대로. */
 export async function getPublicChildComments(childId: string): Promise<ParentChildComment[]> {
   const { data: comments, error } = await db()
     .from("child_comments")
-    .select("classRecordId:class_record_id, comment")
+    .select(
+      "classRecordId:class_record_id, comment, " +
+        "parentActivitySummary:parent_activity_summary, parentPositiveMoment:parent_positive_moment, " +
+        "parentObservedChange:parent_observed_change, parentNextGoal:parent_next_goal, parentHomeTip:parent_home_tip"
+    )
     .eq("child_id", childId)
     .eq("is_public_to_parent", true);
   if (error) throw error;
-  const rows = (comments ?? []) as { classRecordId: string; comment: string | null }[];
+  const rows = (comments ?? []) as unknown as {
+    classRecordId: string;
+    comment: string | null;
+    parentActivitySummary: string | null;
+    parentPositiveMoment: string | null;
+    parentObservedChange: string | null;
+    parentNextGoal: string | null;
+    parentHomeTip: string | null;
+  }[];
   if (rows.length === 0) return [];
 
   const recordIds = rows.map((r) => r.classRecordId);
@@ -923,7 +1032,7 @@ export async function getPublicChildComments(childId: string): Promise<ParentChi
     .map((r) => {
       const record = recordMap.get(r.classRecordId);
       if (!record) return null;
-      const text = (r.comment || record.comment || "").trim();
+      const text = (composeParentDraft(r) || r.comment || record.comment || "").trim();
       if (!text) return null;
       const parent: ParentChildComment = {
         classRecordId: record.id,

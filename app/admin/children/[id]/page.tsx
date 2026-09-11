@@ -89,13 +89,30 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   let commentItems: ChildCommentItem[] = [];
   try {
     const childComments = await getChildCommentsByChild(child.id);
-    commentItems = childComments.map((c) => ({
-      childCommentId: c.childCommentId,
-      classDate: c.classRecord.classDate,
-      activityName: c.classRecord.activityName,
-      activityType: c.classRecord.activityType,
-      comment: c.comment || c.classRecord.comment || "",
-      isPublicToParent: c.isPublicToParent,
+    commentItems = childComments.map(({ classRecord, childComment: c }) => ({
+      childCommentId: c?.id,
+      classDate: classRecord.classDate,
+      activityName: classRecord.activityName,
+      activityType: classRecord.activityType,
+      comment: c?.comment || classRecord.comment || "",
+      isPublicToParent: c?.isPublicToParent ?? false,
+      parentApprovedAt: c?.parentApprovedAt,
+      parentApprovedBy: c?.parentApprovedBy,
+      strengthsNote: c?.strengthsNote,
+      difficultiesNote: c?.difficultiesNote,
+      teacherMemo: c?.teacherMemo,
+      specialNote: c?.specialNote,
+      nextSessionGoal: c?.nextSessionGoal,
+      parentActivitySummary: c?.parentActivitySummary,
+      parentPositiveMoment: c?.parentPositiveMoment,
+      parentObservedChange: c?.parentObservedChange,
+      parentNextGoal: c?.parentNextGoal,
+      parentHomeTip: c?.parentHomeTip,
+      participationLevel: c?.participationLevel,
+      concentrationLevel: c?.concentrationLevel,
+      understandingLevel: c?.understandingLevel,
+      emotionalStateLevel: c?.emotionalStateLevel,
+      interactionLevel: c?.interactionLevel,
     }));
   } catch {
     // class_records/child_comments 테이블 마이그레이션 전 — 빈 목록으로 대체
@@ -283,7 +300,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
   const compareTab = <BrainTestComparison tests={brainTestsWithUrl} templates={testTemplates} />;
   const traitsTab = <ChildTraitsPanel childId={child.id} traits={childTraits} canManageAiFields={isFullAdmin(actor)} />;
   const eegTab = <EegTrainingPanel childId={child.id} sessions={eegSessions} />;
-  const commentsTab = <ChildCommentsHistory items={commentItems} />;
+  const commentsTab = <ChildCommentsHistory items={commentItems} canApprove={isFullAdmin(actor)} />;
   const monthlyTab = <MonthlyReportsPanel childId={child.id} reports={monthlyReports} />;
 
   return (
