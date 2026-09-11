@@ -2,7 +2,7 @@
  * 이미지/스캔PDF 인식 — 서버 전용. Claude Vision에 파일 바이트를 직접 보내고 결과를 받아온다
  * (로컬 렌더링 없음 — 11단계에서 겪은 @napi-rs/canvas 네이티브 의존성 문제를 다시 안 밟음).
  */
-import { extractViaVision } from "../ai/anthropicProvider";
+import { extractViaVision } from "../ai";
 import type { RawExtracted } from "./types";
 
 const IMAGE_MEDIA_TYPE: Record<string, string> = {

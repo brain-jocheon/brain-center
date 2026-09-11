@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentActor } from "@/lib/auth";
 import { actorCanAccessChild, getChild, getChildTraits, logAiGeneration, countRecentAiGenerationsByStaff, hashAiInputSummary } from "@/lib/data";
-import { generateClassRecordDraft } from "@/lib/ai/anthropicProvider";
+import { generateClassRecordDraft } from "@/lib/ai";
 
 const RATE_LIMIT_WINDOW_MINUTES = 60;
 const RATE_LIMIT_MAX = 40;

@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { isFullAdmin, getCurrentActor } from "@/lib/auth";
 import { getBrainTest, getChild, getEegTestTemplatesByType, updateBrainTest, logAiGeneration, countRecentAiGenerationsByStaff, hashAiInputSummary } from "@/lib/data";
-import { generateEegInterpretation } from "@/lib/ai/anthropicProvider";
+import { generateEegInterpretation } from "@/lib/ai";
 import type { EegInterpretationIndicator } from "@/lib/ai/types";
 
 const RATE_LIMIT_WINDOW_MINUTES = 60;
