@@ -12,6 +12,8 @@ import type {
   ClassRecordDraftResult,
   EegInterpretationInput,
   EegInterpretationResult,
+  ParentCommentDraftInput,
+  ParentCommentDraftResult,
   VisionExtractionInput,
   VisionExtractionResult,
 } from "./types";
@@ -160,6 +162,105 @@ export async function generateClassRecordDraft(input: ClassRecordDraftInput): Pr
   if (result.status === "error") return result;
 
   const draft = parseDraftJson(result.text);
+  if (!draft) return { status: "error", message: "AI 응답 형식이 올바르지 않습니다." };
+
+  return { status: "ok", ...draft, model, tokensUsed: result.tokensUsed };
+}
+
+/* ---------------- 16단계: 수업기록 기반 학부모 코멘트 5분할 초안 ---------------- */
+
+const PARENT_COMMENT_SYSTEM_PROMPT = `당신은 아동 학습심리센터에서 학부모에게 전달할 수업 코멘트 초안 작성을 돕는 보조 도구입니다.
+반드시 아래 규칙을 지키세요:
+1. 제공된 사실 정보(오늘 활동, 단계형 관찰지표, 선생님 메모, 최근 수업기록, 이용 프로그램)만 사용하세요. 제공되지 않은 구체적 사건, 수치, 진단명을 절대 지어내지 마세요.
+2. 전문적이지만 학부모가 이해하기 쉬운 표현을 쓰세요. 어려운 전문용어는 피하세요.
+3. 부정적 표현은 최소화하고, 완곡하고 건설적인 표현으로 바꾸세요. 다만 사실을 왜곡하지는 마세요.
+4. "~일 가능성이 있습니다", "~한 경향이 보입니다" 같은 의학적·심리적 단정 진단 표현은 절대 쓰지 마세요 — 이 코멘트는 진단이 아니라 수업 중 관찰 기록입니다.
+5. 과장된 칭찬(예: "천재적", "완벽하게")을 쓰지 마세요.
+6. 관찰된 사실("~하는 모습을 보였습니다")과 선생님의 해석·소감("~해 보였습니다")을 문장에서 구분해서 쓰세요.
+7. 같은 문구를 반복해 템플릿처럼 보이지 않게, 아이의 구체적 상황에 맞는 표현을 쓰세요.
+8. 각 항목은 1~2문장, 짧고 명확하게 쓰세요.
+9. 다음 다섯 가지를 작성하세요:
+   - activitySummary: 오늘의 활동
+   - positiveMoment: 아이의 긍정적인 반응
+   - observedChange: 관찰된 변화(이전 기록과 비교할 근거가 없으면 오늘 관찰한 사실만 서술)
+   - nextGoal: 다음 목표
+   - homeTip: 가정에서 참고할 내용
+10. 출력은 반드시 아래 JSON 형식 하나만 반환하세요. 마크다운 코드펜스나 다른 설명 텍스트를 절대 포함하지 마세요.
+{"activitySummary":"...","positiveMoment":"...","observedChange":"...","nextGoal":"...","homeTip":"..."}`;
+
+const RATING_FIELD_LABELS: [keyof ParentCommentDraftInput, string][] = [
+  ["participationLevel", "참여도"],
+  ["concentrationLevel", "집중도"],
+  ["understandingLevel", "이해도"],
+  ["emotionalStateLevel", "정서상태"],
+  ["interactionLevel", "상호작용"],
+];
+
+function buildParentCommentUserContent(input: ParentCommentDraftInput): string {
+  const lines = [
+    `아동 이름: ${input.childName}`,
+    `오늘 활동: ${input.activityName} (${input.activityType})`,
+    `날짜: ${input.classDate}`,
+  ];
+  const ratings = RATING_FIELD_LABELS.map(([key, label]) => {
+    const v = input[key];
+    return typeof v === "number" ? `${label} ${v}/5` : null;
+  }).filter((v): v is string => v !== null);
+  if (ratings.length > 0) lines.push(`오늘 관찰(1~5단계): ${ratings.join(", ")}`);
+  if (input.strengthsNote) lines.push(`잘한 점: ${input.strengthsNote}`);
+  if (input.difficultiesNote) lines.push(`어려워한 점: ${input.difficultiesNote}`);
+  if (input.specialNote) lines.push(`특이사항: ${input.specialNote}`);
+  if (input.nextSessionGoal) lines.push(`선생님이 생각하는 다음 시간 목표: ${input.nextSessionGoal}`);
+  if (input.programContext) lines.push(`현재 이용 프로그램: ${input.programContext}`);
+  if (input.recentSessionsContext) lines.push(`최근 수업기록:\n${input.recentSessionsContext}`);
+  return lines.join("\n");
+}
+
+function parseParentCommentJson(
+  text: string
+): { activitySummary: string; positiveMoment: string; observedChange: string; nextGoal: string; homeTip: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.trim());
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+  const { activitySummary, positiveMoment, observedChange, nextGoal, homeTip } = obj;
+  if (
+    typeof activitySummary !== "string" ||
+    typeof positiveMoment !== "string" ||
+    typeof observedChange !== "string" ||
+    typeof nextGoal !== "string" ||
+    typeof homeTip !== "string"
+  ) {
+    return null;
+  }
+  if (![activitySummary, positiveMoment, observedChange, nextGoal, homeTip].every((v) => v.trim())) return null;
+  return {
+    activitySummary: activitySummary.trim(),
+    positiveMoment: positiveMoment.trim(),
+    observedChange: observedChange.trim(),
+    nextGoal: nextGoal.trim(),
+    homeTip: homeTip.trim(),
+  };
+}
+
+export async function generateParentCommentDraft(input: ParentCommentDraftInput): Promise<ParentCommentDraftResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { status: "not_configured" };
+  const model = process.env.AI_MODEL?.trim() || DEFAULT_MODEL;
+
+  const result = await callAnthropicWithRetry({
+    apiKey,
+    model,
+    system: PARENT_COMMENT_SYSTEM_PROMPT,
+    userContent: buildParentCommentUserContent(input),
+  });
+  if (result.status === "error") return result;
+
+  const draft = parseParentCommentJson(result.text);
   if (!draft) return { status: "error", message: "AI 응답 형식이 올바르지 않습니다." };
 
   return { status: "ok", ...draft, model, tokensUsed: result.tokensUsed };

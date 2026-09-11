@@ -353,6 +353,14 @@ export interface ChildComment {
   parentHomeTip?: string;
   parentApprovedAt?: string;
   parentApprovedBy?: string;
+  /** [16단계] AI가 생성한 5분할 초안 원본 스냅샷 — parentActivitySummary 등 라이브 필드와는 별개(적용 버튼을 눌러야 복사됨) */
+  aiParentDraft?: {
+    activitySummary: string;
+    positiveMoment: string;
+    observedChange: string;
+    nextGoal: string;
+    homeTip: string;
+  };
 }
 
 /** 학부모 화면에 내려가는 코멘트 — 공개로 설정된 것만, 관리자 전용 필드 없음 */
@@ -529,7 +537,7 @@ export interface EegTrainingSession {
 /** AI 호출 이력 — 이름/생년월일 등은 저장하지 않고 해시만(개인정보 최소화) */
 export interface AiGenerationLog {
   id: string;
-  feature: "class_record" | "eeg_interpretation" | "vision_extraction";
+  feature: "class_record" | "eeg_interpretation" | "vision_extraction" | "parent_comment_draft";
   targetId: string;
   staffId?: string;
   model?: string;

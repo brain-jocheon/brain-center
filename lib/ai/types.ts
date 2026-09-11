@@ -53,6 +53,42 @@ export type EegInterpretationResult =
       tokensUsed?: number;
     };
 
+/** 16단계 — 수업기록(15단계 단계형 관찰지표+내부메모) 기반 학부모 코멘트 5분할 초안.
+ * BQ2/다원재능 검사 결과는 이번 단계에서 의도적으로 포함하지 않음(다음 단계로 분리). */
+export interface ParentCommentDraftInput {
+  childName: string;
+  activityName: string;
+  activityType: string;
+  classDate: string;
+  participationLevel?: number;
+  concentrationLevel?: number;
+  understandingLevel?: number;
+  emotionalStateLevel?: number;
+  interactionLevel?: number;
+  strengthsNote?: string;
+  difficultiesNote?: string;
+  specialNote?: string;
+  nextSessionGoal?: string;
+  /** 최근 3~5회 수업기록을 짧게 요약한 텍스트(선택) */
+  recentSessionsContext?: string;
+  /** 현재 이용 중인 프로그램(children.serviceType, 선택) */
+  programContext?: string;
+}
+
+export type ParentCommentDraftResult =
+  | { status: "not_configured" }
+  | { status: "error"; message: string }
+  | {
+      status: "ok";
+      activitySummary: string;
+      positiveMoment: string;
+      observedChange: string;
+      nextGoal: string;
+      homeTip: string;
+      model: string;
+      tokensUsed?: number;
+    };
+
 /** 12단계 — 이미지/스캔PDF를 Claude Vision으로 직접 읽음(로컬 렌더링 없음) */
 export interface VisionExtractionInput {
   base64: string;

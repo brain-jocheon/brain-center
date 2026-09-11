@@ -57,6 +57,14 @@ export interface ChildCommentItem {
   understandingLevel?: number;
   emotionalStateLevel?: number;
   interactionLevel?: number;
+  /** [16단계] AI가 생성한 5분할 초안 원본(적용 전까지는 위 parent* 라이브 필드와 별개) */
+  aiParentDraft?: {
+    activitySummary: string;
+    positiveMoment: string;
+    observedChange: string;
+    nextGoal: string;
+    homeTip: string;
+  };
 }
 
 export default function ChildCommentsHistory({ items, canApprove }: { items: ChildCommentItem[]; canApprove: boolean }) {
@@ -137,6 +145,9 @@ function CommentCard({ item, canApprove }: { item: ChildCommentItem; canApprove:
   const [approving, setApproving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiDraft, setAiDraft] = useState(item.aiParentDraft ?? null);
+  const [aiMessage, setAiMessage] = useState("");
 
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     if (!item.childCommentId) return false;
@@ -176,6 +187,45 @@ function CommentCard({ item, canApprove }: { item: ChildCommentItem; canApprove:
       setEditing(false);
       setTimeout(() => setSaved(false), 1500);
     }
+  }
+
+  async function generateAiDraft() {
+    if (!item.childCommentId) return;
+    setAiLoading(true);
+    setAiMessage("");
+    try {
+      const res = await fetch("/api/admin/ai/parent-comment-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          childCommentId: item.childCommentId,
+          activityName: item.activityName,
+          activityType: item.activityType,
+          classDate: item.classDate,
+          ...ratings,
+          strengthsNote, difficultiesNote, specialNote, nextSessionGoal,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setAiMessage(data?.message || "AI 초안 생성에 실패했습니다.");
+        return;
+      }
+      setAiDraft(data.draft);
+    } catch {
+      setAiMessage("네트워크 오류로 AI 초안 생성에 실패했습니다.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyAiDraft() {
+    if (!aiDraft) return;
+    setParentActivitySummary(aiDraft.activitySummary);
+    setParentPositiveMoment(aiDraft.positiveMoment);
+    setParentObservedChange(aiDraft.observedChange);
+    setParentNextGoal(aiDraft.nextGoal);
+    setParentHomeTip(aiDraft.homeTip);
   }
 
   async function togglePublish(action: "approve" | "revoke") {
@@ -232,6 +282,29 @@ function CommentCard({ item, canApprove }: { item: ChildCommentItem; canApprove:
               <input className="input !py-1.5 text-xs" placeholder="관찰된 변화" value={parentObservedChange} onChange={(e) => setParentObservedChange(e.target.value)} />
               <input className="input !py-1.5 text-xs" placeholder="다음 목표" value={parentNextGoal} onChange={(e) => setParentNextGoal(e.target.value)} />
               <input className="input !py-1.5 text-xs" placeholder="가정에서 참고할 내용" value={parentHomeTip} onChange={(e) => setParentHomeTip(e.target.value)} />
+
+              <button
+                type="button"
+                className="btn-ghost !px-3 !py-1.5 text-xs"
+                disabled={aiLoading}
+                onClick={generateAiDraft}
+              >
+                {aiLoading ? "AI 초안 생성 중..." : "AI 초안 생성"}
+              </button>
+              {aiMessage && <p className="text-xs text-ink/50">{aiMessage}</p>}
+              {aiDraft && (
+                <div className="rounded-lg bg-sage-50 p-2.5 space-y-1.5">
+                  <p className="text-[11px] font-medium text-sage-700">AI 제안 (검토 후 적용하세요)</p>
+                  <p className="text-xs text-ink/70"><span className="text-ink/40">오늘의 활동:</span> {aiDraft.activitySummary}</p>
+                  <p className="text-xs text-ink/70"><span className="text-ink/40">긍정적인 반응:</span> {aiDraft.positiveMoment}</p>
+                  <p className="text-xs text-ink/70"><span className="text-ink/40">관찰된 변화:</span> {aiDraft.observedChange}</p>
+                  <p className="text-xs text-ink/70"><span className="text-ink/40">다음 목표:</span> {aiDraft.nextGoal}</p>
+                  <p className="text-xs text-ink/70"><span className="text-ink/40">가정에서 참고할 내용:</span> {aiDraft.homeTip}</p>
+                  <button type="button" className="text-[11px] text-sage-600 underline underline-offset-2" onClick={applyAiDraft}>
+                    이 초안 적용
+                  </button>
+                </div>
+              )}
             </div>
           </details>
 

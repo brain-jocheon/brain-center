@@ -923,6 +923,23 @@ export async function updateChildComment(
   return (data?.length ?? 0) > 0;
 }
 
+/** [16단계] AI가 방금 생성한 학부모 코멘트 5분할 초안을 원본 스냅샷으로만 저장 —
+ * parent_activity_summary 등 실제 편집 가능한 라이브 필드는 여기서 건드리지 않는다
+ * (사람이 "이 초안 적용"을 눌러야 편집 상태로 복사됨 — AI 결과 자동 반영 금지). */
+export async function saveAiParentDraft(
+  childCommentId: string,
+  draft: { activitySummary: string; positiveMoment: string; observedChange: string; nextGoal: string; homeTip: string },
+  model: string
+): Promise<boolean> {
+  const { data, error } = await db()
+    .from("child_comments")
+    .update({ ai_parent_draft: draft, ai_generated_at: new Date().toISOString(), ai_model: model, updated_at: new Date().toISOString() })
+    .eq("id", childCommentId)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
 const CHILD_COMMENT_ADMIN_SELECT =
   "id, classRecordId:class_record_id, comment, isPublicToParent:is_public_to_parent, " +
   "participationLevel:participation_level, concentrationLevel:concentration_level, understandingLevel:understanding_level, " +
@@ -931,7 +948,7 @@ const CHILD_COMMENT_ADMIN_SELECT =
   "specialNote:special_note, nextSessionGoal:next_session_goal, " +
   "parentActivitySummary:parent_activity_summary, parentPositiveMoment:parent_positive_moment, " +
   "parentObservedChange:parent_observed_change, parentNextGoal:parent_next_goal, parentHomeTip:parent_home_tip, " +
-  "parentApprovedAt:parent_approved_at, parentApprovedBy:parent_approved_by";
+  "parentApprovedAt:parent_approved_at, parentApprovedBy:parent_approved_by, aiParentDraft:ai_parent_draft";
 
 export type ChildCommentAdminRow = Omit<ChildComment, "childId" | "classRecordId" | "createdAt" | "updatedAt" | "deletedAt"> & {
   classRecordId: string;
@@ -1052,7 +1069,7 @@ export async function getPublicChildComments(childId: string): Promise<ParentChi
 
 /** 단발성 호출 결과를 한 번에 기록 — pending 상태 없이 결과가 나온 시점에 딱 한 번 insert */
 export async function logAiGeneration(input: {
-  feature: "class_record" | "eeg_interpretation" | "vision_extraction";
+  feature: "class_record" | "eeg_interpretation" | "vision_extraction" | "parent_comment_draft";
   targetId: string;
   staffId?: string;
   model?: string;

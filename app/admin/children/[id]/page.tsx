@@ -113,6 +113,7 @@ export default async function ChildDetail({ params }: { params: { id: string } }
       understandingLevel: c?.understandingLevel,
       emotionalStateLevel: c?.emotionalStateLevel,
       interactionLevel: c?.interactionLevel,
+      aiParentDraft: c?.aiParentDraft,
     }));
   } catch {
     // class_records/child_comments 테이블 마이그레이션 전 — 빈 목록으로 대체

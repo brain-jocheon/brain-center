@@ -715,3 +715,17 @@ alter table child_comments add column if not exists parent_approved_by text;
 
 -- ---- class_records 확장: "담당 선생님"을 실제 계정으로 남김(기존 counselor 자유텍스트는 그대로 유지, 병행) ----
 alter table class_records add column if not exists created_by_staff_id text references staff(id) on delete set null;
+
+-- =====================================================================
+-- 16단계: 수업기록 기반 학부모 코멘트 AI 초안 생성
+-- ---------------------------------------------------------------------
+-- AI 원본은 ai_parent_draft(jsonb)에 스냅샷으로만 남기고, 실제 편집 가능한
+-- parent_activity_summary 등 5개 필드(15단계)는 자동으로 안 건드린다 — 사람이
+-- "이 초안 적용"을 눌러야 옮겨짐. 생성시각/모델은 기존 ai_generated_at/ai_model
+-- (10단계)을, 승인여부/승인자는 기존 parent_approved_at/by(15단계)를 그대로 재사용.
+-- =====================================================================
+alter table child_comments add column if not exists ai_parent_draft jsonb;
+
+alter table ai_generation_logs drop constraint if exists ai_generation_logs_feature_check;
+alter table ai_generation_logs add constraint ai_generation_logs_feature_check
+  check (feature in ('class_record', 'eeg_interpretation', 'vision_extraction', 'parent_comment_draft'));
